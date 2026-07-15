@@ -11,7 +11,7 @@ from django.core.exceptions import ValidationError
 
 from comp_eval_platform.competitions import Competition
 from comp_eval_platform.core.models.execution import SHUTDOWN_KIND
-from comp_eval_platform.results import Presentation, Scoreboard
+from comp_eval_platform.results import Branding, Presentation, Scoreboard
 
 from . import kinds
 from .categories import get_category_spec
@@ -96,4 +96,5 @@ class ArchCompetition(Competition):
             result_columns=["instance", "result", "time"],
             submission_fields=[{"name": "base_image", "type": "text"}],
             score_columns=["tool", "category", "solved", "time"],
+            branding=Branding(primary_color="#0f766e"),  # dark teal
         )
