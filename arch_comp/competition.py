@@ -65,6 +65,9 @@ class ArchCompetition(Competition):
     def script_root(self) -> str:
         return os.path.join(os.path.dirname(__file__), "scripts")
 
+    def assets_dir(self) -> str:
+        return os.path.join(os.path.dirname(__file__), "assets")
+
     # (4) Result parsing → normalized records (per category) --------------
     def parse_results(self, run, artifacts_dir: str) -> list:
         category = run.tool.category.name if run.tool else "default"
@@ -96,11 +99,20 @@ class ArchCompetition(Competition):
             result_columns=["instance", "result", "time"],
             submission_fields=[{"name": "base_image", "type": "text"}],
             score_columns=["tool", "category", "solved", "time"],
-            branding=Branding(primary_color="#0f766e"),  # dark teal
+            branding=Branding(
+                primary_color="#a4161a",  # dark red (white text 7.75:1); logo field matches
+                hero_image="/api/competition/assets/logo.png",
+                hero_max_width=312,  # 60% of the shell's default; the logo is square, not a banner
+                favicon="/api/competition/assets/logo.png",
+            ),
             landing=Landing(
-                tagline="The competition for verifying neural network control systems. Run your "
-                        "tool against continuous and hybrid-system benchmarks across categories.",
-                contacts=["tobias.ladner@tum.de"],
+                tagline="ARCH-COMP is a friendly competition for verifying continuous and hybrid "
+                        "systems across categories, including systems controlled by neural networks.",
+                links=[
+                    {"label": "Main Website", "url": "https://cps-vo.org/group/ARCH/FriendlyCompetition"},
+                    {"label": "GitHub", "url": "https://github.com/ARCH-COMP"},
+                ],
+                contacts=["nico.holzinger@tum.de", "tobias.ladner@tum.de"],
                 related={
                     "text": "Verifying standalone neural networks? Check out VNN-COMP!",
                     "label": "Visit VNN-COMP",
