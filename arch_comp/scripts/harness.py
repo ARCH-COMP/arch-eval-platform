@@ -35,8 +35,8 @@ PREPARE_CAP_SECONDS = 600
 # clean stdout; the run wrapper tees both into the step log. Tiers by prominence: a
 # thick stage (a per-instance boundary here) wraps a thin box that walls the tool's own
 # output — the outer double superstage is owned by the shell wrapper, not the harness.
-_LOG_THICK = "━" * 57
-_LOG_THIN = "─" * 54
+_LOG_THICK = "━" * 60
+_LOG_THIN = "─" * 58
 
 
 def _log_tag():
