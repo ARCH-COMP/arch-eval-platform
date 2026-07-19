@@ -7,9 +7,18 @@ from comp_eval_platform.core.steps import StepHandler, register_step_handler
 from . import kinds
 
 
+#: ARCH tool-interface version passed as the first arg to a tool's scripts. A tool may
+#: pin one via ``tool.extra["version"]``; else the current default.
+INTERFACE_VERSION = "v1"
+
+
 def _node_ip(task):
     node = task.node
     return node.ip if node is not None else None
+
+
+def _version(tool) -> str:
+    return ((tool.extra if tool else {}) or {}).get("version") or INTERFACE_VERSION
 
 
 @register_step_handler
@@ -25,24 +34,32 @@ class ArchCreateHandler(StepHandler):
 
 @register_step_handler
 class ArchInstallHandler(StepHandler):
-    """Clone the tool into its base image, run install + license activation."""
+    """Clone the tool onto the node and run its ``install_tool.sh <version>``."""
 
     kind = kinds.INSTALL
+    node_log_path = "logs/install.log"  # install_tool.sh tees the run here
 
     def execute(self):
         ip = _node_ip(self.task)
         if ip is None:
             self.task.step_failed(check_status=False)
             return
-        _ping("arch", "install_tool.sh", {
+        tool = self.task.tool
+        # Generic install (clone tool + run its install_tool.sh) is a core script; the
+        # tool is cloned to /home/ubuntu/tool, where run_benchmark.sh looks for it.
+        _ping("node", "install_tool.sh", {
             "benchmark_ip": ip,
             "task_id": str(self.task.id),
-            "base_image": self.task.tool.base_image,
-            "repository": self.task.tool.repository,
+            "repository": tool.repository,
+            "hash": tool.hash or "",
+            "script_dir": tool.script_dir or ".",
+            "version": _version(tool),
+            "run_as_root": str(self.step.run_as_root).lower(),
+            "tool_dir": "tool",
         })
 
     def retry_until_success(self) -> bool:
-        return True
+        return True  # installs are flaky (network); retry rather than fail the task
 
 
 @register_step_handler
@@ -99,6 +116,11 @@ class ArchLoadHandler(StepHandler):
 
 @register_step_handler
 class ArchRunBenchmarkHandler(StepHandler):
+    """Run one benchmark's instances with the installed tool. The node-side harness
+    loops the benchmark's instances (prepare/run_instance per the ARCH contract, timing
+    each), writing a results.csv keyed by benchmark id (benchmark names may have spaces).
+    On completion the results are read back, parsed per category, and stored."""
+
     kind = kinds.RUN_BENCHMARK
 
     def _benchmark(self):
@@ -106,36 +128,64 @@ class ArchRunBenchmarkHandler(StepHandler):
 
         return Benchmark.objects.filter(id=self.step.payload.get("benchmark_id")).first()
 
+    @property
+    def node_log_path(self):
+        """run_benchmark.sh tees each benchmark's run to its own log (keyed by id)."""
+        b = self._benchmark()
+        return f"logs/run_{b.id}.log" if b else None
+
     def execute(self):
         ip = _node_ip(self.task)
         if ip is None:
             self.task.step_failed(check_status=False)
             return
         b = self._benchmark()
+        if b is None:
+            self.task.step_succeeded(check_status=False)
+            return
+        tool = self.task.tool
         _ping("arch", "run_benchmark.sh", {
             "benchmark_ip": ip,
             "task_id": str(self.task.id),
-            "benchmark_name": b.name if b else "",
+            "benchmark_id": str(b.id),
+            "benchmark_name": b.name,
+            "category": b.category.name,
+            "version": _version(tool),
+            "script_dir": (tool.script_dir if tool else ".") or ".",
+            "repository": b.repository,
+            "hash": b.hash or "",
         })
 
     def can_abort_benchmark(self) -> bool:
         return True
 
     def abort_benchmark(self):
+        """Stop the node-side run (best-effort) and move on to the next benchmark."""
+        from comp_eval_platform.compute.shell import node_exec
+
+        ip = _node_ip(self.task)
+        b = self._benchmark()
+        if ip is not None and b is not None:
+            node_exec(ip, f"tmux kill-session -t run_{b.id} 2>/dev/null; true")
         self.task.step_succeeded(check_status=False)
 
     def on_marked_done(self):
+        """Fetch the node's results.csv, parse per category, and persist Result rows."""
+        import shutil
+
         from comp_eval_platform.competitions import get_competition
         from comp_eval_platform.core.models import Instance, Result
 
         b = self._benchmark()
-        artifacts = self._fetch_artifacts()
-        if b is None or artifacts is None:
+        if b is None:
             return
-        records = get_competition().parse_results(self.task, artifacts)
-        instances = {i.name: i for i in Instance.objects.filter(benchmark=b)}
-        Result.store(self.task, self.task.tool, b, b.category, records, instances_by_name=instances)
-
-    def _fetch_artifacts(self):
-        # Placeholder for SCP-from-node results collection; returns None until wired.
-        return None
+        # Result collection (fetch results.csv → temp dir) is generic core behavior.
+        artifacts = self.collect_results(f"/home/ubuntu/logs/results_{b.id}.csv")
+        if artifacts is None:
+            return
+        try:
+            records = get_competition().parse_results(self.task, artifacts)
+            instances = {i.name: i for i in Instance.objects.filter(benchmark=b)}
+            Result.store(self.task, self.task.tool, b, b.category, records, instances_by_name=instances)
+        finally:
+            shutil.rmtree(artifacts, ignore_errors=True)

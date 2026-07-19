@@ -126,6 +126,39 @@ def test_load_handler_loads_category_from_node(monkeypatch):
     assert b.published and b.hash == "deadbeef"  # sha from the node, not the empty submitted hash
 
 
+def test_run_handler_parses_and_stores_results(monkeypatch):
+    """The run step reads the node's harness results.csv back and stores per-instance
+    Results, parsed by the tool's category (AINNCS keeps the CORA breakdown as extra)."""
+    import comp_eval_platform.compute.shell as shell
+    from comp_eval_platform.core.models import (
+        Benchmark, Category, Instance, Result, Task, TaskStep, Tool,
+    )
+    from comp_eval_platform.core.steps import StepHandler
+
+    from arch_comp import kinds
+
+    cat = Category.objects.create(name="AINNCS")
+    tool = Tool.objects.create(owner=_user(), category=cat, name="cora", base_image="cora")
+    b = Benchmark.objects.create(owner=_user(), category=cat, name="ACC", published=True)
+    Instance.objects.create(benchmark=b, name="acc_1", spec={}, order=0)
+    task = Task.objects.create(owner=tool.owner, tool=tool)
+    step = TaskStep.objects.create(task=task, kind=kinds.RUN_BENCHMARK, order=0,
+                                   payload={"benchmark_id": str(b.id)})
+
+    # collect_results (core) reads the node over self.node_ip; give it one.
+    monkeypatch.setattr(StepHandler, "node_ip", property(lambda self: "1.2.3.4"))
+    monkeypatch.setattr(shell, "node_exec", lambda ip, cmd, **k:
+                        "benchmark,instance,time_verification,prepare_time,result,time\n"
+                        "ACC,acc_1,0.42,0.01,verified,0.85\n")
+
+    step.handler.on_marked_done()
+
+    r = Result.objects.get(task=task, benchmark=b)
+    assert r.result == "verified" and r.time == 0.85
+    assert r.instance.name == "acc_1"
+    assert r.extra.get("time_verification") == 0.42  # CORA breakdown kept as extra
+
+
 def test_overview_labels_category_task_by_category():
     """A per-category benchmark task shows its category (not a name) + repo on the overview."""
     from comp_eval_platform.core.models import Category, Task
