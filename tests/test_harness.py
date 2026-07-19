@@ -30,8 +30,9 @@ def _repo(dir_, instances_csv):
     return dir_
 
 
-def _run_benchmark(repo, name, tool, out):
-    subprocess.run([sys.executable, HARNESS, "benchmark", repo, name, tool, out], check=True)
+def _run_benchmark(repo, name, tool, out, version="v1", category="AINNCS"):
+    subprocess.run([sys.executable, HARNESS, "benchmark", repo, name, tool, out, version, category],
+                   check=True)
     with open(out, newline="") as fh:
         return list(csv.DictReader(fh))
 
@@ -58,6 +59,27 @@ def test_records_result_and_harness_wall_clock(tmp_path):
     assert all(float(r["time"]) >= 0.0 for r in rows)
     assert rows[0]["time_verification"] == "0.42"
     assert "prepare_time" in rows[0]
+
+
+# A tool that echoes the arguments it received back into the results file, to check the
+# harness passes them as <version> <category> <benchmark> <instance> ... <results_file>.
+ECHO_TOOL = (
+    "#!/bin/sh\n"
+    'for a in "$@"; do last="$a"; done\n'
+    'printf "result,seen_version,seen_category,seen_benchmark,seen_instance\\n" > "$last"\n'
+    'printf "unknown,%s,%s,%s,%s\\n" "$1" "$2" "$3" "$4" >> "$last"\n'
+)
+
+
+def test_forwards_version_category_then_columns(tmp_path):
+    repo = _repo(tmp_path / "repo", "benchmark,instance\nACC,a1\n")
+    tool = _tool(tmp_path / "tool", ECHO_TOOL)
+    out = str(tmp_path / "results.csv")
+    (row,) = _run_benchmark(repo, "ACC", tool, out, version="v1", category="AINNCS")
+    assert row["seen_version"] == "v1"
+    assert row["seen_category"] == "AINNCS"
+    assert row["seen_benchmark"] == "ACC"
+    assert row["seen_instance"] == "a1"
 
 
 def test_optional_timeout_column_caps_the_run(tmp_path):

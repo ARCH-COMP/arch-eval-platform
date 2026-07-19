@@ -88,11 +88,14 @@ def _read_tool_result(path):
     return result, extra
 
 
-def run_instance(tool_dir, values, timeout):
+def run_instance(tool_dir, version, category, values, timeout):
     """Run one instance: prepare (capped at ``PREPARE_CAP_SECONDS``) then run (capped at
-    ``timeout``). Returns ``{prepare_time, result, time, extra}``."""
+    ``timeout``). The tool scripts are called as ``<version> <category> <col1..colN>``
+    (the instances.csv columns in file order — ``benchmark``, ``instance``, …), with the
+    results file appended for the run. Returns ``{prepare_time, result, time, extra}``."""
     prep_elapsed, prep_to, prep_rc = _timed_run(
-        [os.path.join(tool_dir, "prepare_instance.sh"), *values], tool_dir, PREPARE_CAP_SECONDS,
+        [os.path.join(tool_dir, "prepare_instance.sh"), version, category, *values],
+        tool_dir, PREPARE_CAP_SECONDS,
     )
     if prep_to or prep_rc != 0:
         # A failed prepare skips the instance (rule-compliant: it scores as unsolved).
@@ -103,7 +106,8 @@ def run_instance(tool_dir, values, timeout):
     os.close(fd)
     try:
         run_elapsed, run_to, run_rc = _timed_run(
-            [os.path.join(tool_dir, "run_instance.sh"), *values, res_path], tool_dir, timeout,
+            [os.path.join(tool_dir, "run_instance.sh"), version, category, *values, res_path],
+            tool_dir, timeout,
         )
         if run_to:
             result, extra = "timeout", {}
@@ -126,7 +130,7 @@ def _read_instances(path):
     return header, rows
 
 
-def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv):
+def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category):
     """Run every instance of ``benchmark_name`` (from ``repo_dir/instances.csv``) and
     write ``out_csv``. The output header is stable within the benchmark: the union of
     tool-reported extra columns (first-seen order) sits between the identifiers and the
@@ -138,7 +142,7 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv):
     results = []
     for r in target:
         values = [r[c] for c in header]
-        out = run_instance(tool_dir, values, _parse_timeout(r.get(TIMEOUT_COLUMN)))
+        out = run_instance(tool_dir, version, category, values, _parse_timeout(r.get(TIMEOUT_COLUMN)))
         for k in out["extra"]:
             if k not in extra_cols:
                 extra_cols.append(k)
@@ -158,16 +162,16 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv):
 
 
 def main(argv):
-    if len(argv) >= 6 and argv[1] == "benchmark":
-        run_benchmark(argv[2], argv[3], argv[4], argv[5])
+    if len(argv) >= 8 and argv[1] == "benchmark":
+        run_benchmark(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7])
         return 0
-    if len(argv) >= 4 and argv[1] == "instance":
-        out = run_instance(argv[2], argv[4:], _parse_timeout(argv[3]))
+    if len(argv) >= 7 and argv[1] == "instance":
+        out = run_instance(argv[2], argv[3], argv[4], argv[6:], _parse_timeout(argv[5]))
         print(json.dumps(out))
         return 0
     sys.stderr.write(
-        "usage: harness.py benchmark <repo_dir> <benchmark_name> <tool_dir> <out_csv>\n"
-        "       harness.py instance  <tool_dir> <timeout|inf> <col1> [col2 ...]\n"
+        "usage: harness.py benchmark <repo_dir> <benchmark_name> <tool_dir> <out_csv> <version> <category>\n"
+        "       harness.py instance  <tool_dir> <version> <category> <timeout|inf> <col1> [col2 ...]\n"
     )
     return 2
 
