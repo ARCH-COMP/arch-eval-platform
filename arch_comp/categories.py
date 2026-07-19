@@ -12,7 +12,28 @@ import os
 
 from comp_eval_platform.results import ResultRecord
 
+#: ARCH-COMP's fixed category axis. Every tool/benchmark targets exactly one of
+#: these — unlike VNN's tracks, where every tool runs all of them. This is the
+#: single central list; add a category here (and, if it has bespoke result columns,
+#: a CategorySpec below) to make it selectable.
+ARCH_CATEGORIES = ["AFF", "NLN", "AINNCS"]
+
 _CATEGORY_SPECS: dict = {}
+
+
+def ensure_categories() -> dict:
+    """Get-or-create a ``Category`` row for each name in ``ARCH_CATEGORIES``, seeding
+    its ``result_fields`` from the matching spec (default columns for those without a
+    bespoke spec). Idempotent. Returns {name: Category}."""
+    from comp_eval_platform.core.models import Category
+
+    cats = {}
+    for name in ARCH_CATEGORIES:
+        spec = get_category_spec(name)
+        cats[name], _ = Category.objects.get_or_create(
+            name=name, defaults={"result_fields": list(spec.result_fields)},
+        )
+    return cats
 
 
 def register_category(cls):
@@ -76,10 +97,12 @@ class AinncsCategory(CategorySpec):
     result_fields = ["result", "time_random", "time_violation", "time_reachable", "time_verification"]
 
     def _record(self, row: dict) -> ResultRecord:
-        times = {k: _f(row.get(k)) for k in self.result_fields if k != "result"}
+        # The harness owns the canonical wall-clock ``time``; the tool's CORA timing
+        # breakdown is self-reported and rides along as ``extra``.
+        breakdown = {k: _f(row.get(k)) for k in self.result_fields if k != "result"}
         return ResultRecord(
             instance=(row.get("instance") or "").strip(),
             result=(row.get("result") or "").strip(),
-            time=times.get("time_verification"),
-            extra=times,
+            time=_f(row.get("time")),
+            extra=breakdown,
         )

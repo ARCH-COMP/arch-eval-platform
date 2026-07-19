@@ -54,6 +54,27 @@ def test_build_steps_graph():
     ]
 
 
+def test_build_steps_respects_selected_benchmarks():
+    """A tool runs only the benchmarks it opted into (tool.extra['benchmarks'])."""
+    from comp_eval_platform.competitions import get_competition
+    from comp_eval_platform.core.models import Benchmark, Category, Task, Tool
+
+    from arch_comp import kinds
+
+    cat = Category.objects.create(name="AINNCS")
+    acc = Benchmark.objects.create(owner=_user(), category=cat, name="ACC", published=True)
+    Benchmark.objects.create(owner=_user(), category=cat, name="Airplane", published=True)
+    tora = Benchmark.objects.create(owner=_user(), category=cat, name="TORA", published=True)
+
+    tool = Tool.objects.create(owner=_user(), category=cat, name="cora", base_image="cora",
+                               extra={"benchmarks": [str(acc.id), str(tora.id)]})
+    task = Task.objects.create(owner=tool.owner, tool=tool)
+    get_competition().build_steps(task)
+
+    run_steps = task.step_set.filter(kind=kinds.RUN_BENCHMARK).order_by("order")
+    assert [s.payload["benchmark_id"] for s in run_steps] == [str(acc.id), str(tora.id)]
+
+
 def test_category_registry_has_specialized_and_default():
     from arch_comp.categories import get_category_spec, registered_categories
 
@@ -74,14 +95,15 @@ def test_parse_results_dispatches_per_category(tmp_path):
     ainncs = Category.objects.create(name="AINNCS")
     tool_a = Tool.objects.create(owner=_user(), category=ainncs, name="cora", base_image="cora")
     task_a = Task.objects.create(owner=tool_a.owner, tool=tool_a)
+    # Harness results.csv: canonical wall-clock `time` plus the tool's CORA breakdown.
     (tmp_path / "results.csv").write_text(
-        "instance,result,time_random,time_violation,time_reachable,time_verification\n"
-        "acc_1,verified,0.1,0.2,0.3,0.6\n"
+        "benchmark,instance,time_random,time_violation,time_reachable,time_verification,prepare_time,result,time\n"
+        "ACC,acc_1,0.1,0.2,0.3,0.6,0.05,verified,0.85\n"
     )
     recs = comp.parse_results(task_a, str(tmp_path))
     assert len(recs) == 1
     assert recs[0].instance == "acc_1" and recs[0].result == "verified"
-    assert recs[0].time == 0.6
+    assert recs[0].time == 0.85  # harness wall-clock, not the self-reported breakdown
     assert recs[0].extra == {"time_random": 0.1, "time_violation": 0.2,
                              "time_reachable": 0.3, "time_verification": 0.6}
 

@@ -32,6 +32,21 @@ class ArchCompetition(Competition):
             if not submission.instances.exists():
                 raise ValidationError("An ARCH-COMP benchmark must define at least one instance.")
 
+    def load_benchmarks(self, *, category_name, repository, ref, owner) -> list:
+        """Fan a category's central ``instances.csv`` (at ``repository@ref``) into one
+        Benchmark per distinct benchmark, each owning its instances."""
+        from .benchmarks import load_benchmarks_from_repo
+        from .categories import ensure_categories
+
+        cats = ensure_categories()
+        if category_name not in cats:
+            raise ValidationError(
+                f"Unknown ARCH category {category_name!r}; expected one of {sorted(cats)}."
+            )
+        return load_benchmarks_from_repo(
+            category=cats[category_name], repository=repository, ref=ref, owner=owner,
+        )
+
     # (2) Step-graph builder ----------------------------------------------
     def build_steps(self, task) -> list:
         from comp_eval_platform.core.models import Benchmark, TaskStep
@@ -51,8 +66,13 @@ class ArchCompetition(Competition):
             steps += [add(kinds.CREATE), add("assign"), add(kinds.INSTALL)]
             benchmarks = Benchmark.objects.filter(
                 category=task.tool.category, published=True,
-            ).order_by("name")
-            for b in benchmarks:
+            )
+            # A tool enters the subset of its category's benchmarks it opted into
+            # (tool.extra["benchmarks"] = list of ids); absent selection = enter all.
+            selected = task.tool.extra.get("benchmarks")
+            if selected:
+                benchmarks = benchmarks.filter(id__in=selected)
+            for b in benchmarks.order_by("name"):
                 steps.append(add(kinds.RUN_BENCHMARK, benchmark_id=str(b.id)))
             steps.append(add(SHUTDOWN_KIND))
         else:
