@@ -158,6 +158,26 @@ def test_run_handler_parses_and_stores_results(monkeypatch):
     assert r.instance.name == "acc_1"
     assert r.extra.get("time_verification") == 0.42  # CORA breakdown kept as extra
 
+    # A well-formed run freezes a green stats summary tallying the verdicts.
+    step.refresh_from_db()
+    assert step.payload["severity"] == "success"
+    assert step.payload["summary"]["verdicts"] == {"verified": 1, "falsified": 0, "unknown": 0}
+
+
+def test_summarize_buckets_verdicts():
+    from comp_eval_platform.results import ResultRecord
+
+    from arch_comp.summary import summarize
+
+    recs = [ResultRecord(instance=n, result=r, time=None) for n, r in
+            [("a", "verified"), ("b", "falsified"), ("c", "unknown"),
+             ("d", "holds"), ("e", "error")]]  # holds→verified, error→unknown
+    out = summarize(recs)
+    assert out["severity"] == "success"
+    assert out["summary"]["verdicts"] == {"verified": 2, "falsified": 1, "unknown": 2}
+    assert out["summary"]["order"] == ["verified", "falsified", "unknown"]
+    assert summarize([]) is None  # malformed/empty → no green summary
+
 
 def test_overview_labels_category_task_by_category():
     """A per-category benchmark task shows its category (not a name) + repo on the overview."""

@@ -187,5 +187,17 @@ class ArchRunBenchmarkHandler(StepHandler):
             records = get_competition().parse_results(self.task, artifacts)
             instances = {i.name: i for i in Instance.objects.filter(benchmark=b)}
             Result.store(self.task, self.task.tool, b, b.category, records, instances_by_name=instances)
+            self._freeze_summary(records)
         finally:
             shutil.rmtree(artifacts, ignore_errors=True)
+
+    def _freeze_summary(self, records):
+        """Tally the run's verdicts onto the step so the details page shows a green
+        stats overview (there is no ARCH counterexample validator yet)."""
+        from .summary import summarize
+
+        summary = summarize(records)
+        if not summary:
+            return
+        self.step.payload = {**(self.step.payload or {}), **summary}
+        self.step.save(update_fields=["payload"])
