@@ -34,7 +34,7 @@ export COMP_LABEL=\"${COMP_LABEL:-ARCH-COMP}\"
 cd /home/ubuntu || exit 1
 mkdir -p logs
 exec > >(tee ${remote_log_path}) 2>&1
-log_stage 'Start — running ${benchmark_name}'
+log_superstage 'Start — running ${benchmark_name}'
 
 report() {  # success|failure — POST the log tail so the error survives node teardown
     tail -c 200000 ${remote_log_path} > /tmp/run_${benchmark_id}.tail 2>/dev/null || true
@@ -44,9 +44,9 @@ report() {  # success|failure — POST the log tail so the error survives node t
 
 # Clone the category benchmarks repo once (holds instances.csv + the benchmark data).
 if [ ! -d /home/ubuntu/benchmarks_repo/.git ]; then
-    log_step 'Cloning ${repository}'
     rm -rf /home/ubuntu/benchmarks_repo
-    git clone ${repository} /home/ubuntu/benchmarks_repo || { log_stage 'End — clone FAILED'; report failure; exit 1; }
+    log_run 'clone ${repository}' git clone ${repository} /home/ubuntu/benchmarks_repo \
+        || { log_superstage 'End — clone FAILED'; report failure; exit 1; }
     if [ -n \"${hash}\" ]; then git -C /home/ubuntu/benchmarks_repo checkout ${hash}; fi
 fi
 
@@ -57,10 +57,10 @@ if python3 /home/ubuntu/harness.py benchmark \
     /home/ubuntu/tool/${script_dir} \
     /home/ubuntu/logs/results_${benchmark_id}.csv \
     \"${version}\" \"${category}\"; then
-    log_stage 'End — benchmark run done'
+    log_superstage 'End — benchmark run done'
     report success
 else
-    log_stage 'End — benchmark run FAILED'
+    log_superstage 'End — benchmark run FAILED'
     report failure
 fi
 REMOTE_SCRIPT

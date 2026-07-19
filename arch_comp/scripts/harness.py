@@ -23,6 +23,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 #: Safety cap on prepare (mirrors VNN's 10 min); the per-instance run timeout is the
@@ -31,25 +32,36 @@ PREPARE_CAP_SECONDS = 600
 
 # Harmonized system-level logging, mirroring scripts/lib/log.sh so ARCH's node logs read
 # the same as VNN's. Written to stderr so the "instance" subcommand's JSON stays on a
-# clean stdout; the run wrapper tees both into the step log.
-_LOG_BAR = "#" * 63
-_LOG_RULE = "-" * 63
+# clean stdout; the run wrapper tees both into the step log. Tiers by prominence: a
+# thick stage (a per-instance boundary here) wraps a thin box that walls the tool's own
+# output — the outer double superstage is owned by the shell wrapper, not the harness.
+_LOG_THICK = "━" * 57
+_LOG_THIN = "─" * 54
 
 
 def _log_tag():
-    return f"[{os.getenv('COMP_LABEL', 'ARCH-COMP')} | {time.strftime('%H:%M:%S', time.gmtime())}]"
+    return f"{os.getenv('COMP_LABEL', 'ARCH-COMP')} · {time.strftime('%H:%M:%S', time.gmtime())}"
 
 
 def log_stage(msg):
-    print(f"\n{_LOG_BAR}\n{_log_tag()} {msg}\n{_LOG_BAR}", file=sys.stderr, flush=True)
-
-
-def log_step(msg):
-    print(f"\n{_LOG_RULE}\n- {_log_tag()} {msg}", file=sys.stderr, flush=True)
+    print(f"\n┏{_LOG_THICK}\n┃ {_log_tag()} · {msg}\n┗{_LOG_THICK}", file=sys.stderr, flush=True)
 
 
 def log_info(msg):
-    print(f"{_log_tag()} {msg}", file=sys.stderr, flush=True)
+    print(f"{_log_tag()} · {msg}", file=sys.stderr, flush=True)
+
+
+# Thin box that walls a tool's stdout/stderr so its chatter can't break the layout.
+def log_box_open(msg):
+    print(f"┌{_LOG_THIN}\n│ {_log_tag()} · {msg}", file=sys.stderr, flush=True)
+
+
+def log_box_note(msg):
+    print(f"│ {_log_tag()} · {msg}", file=sys.stderr, flush=True)
+
+
+def log_box_close():
+    print(f"└{_LOG_THIN}", file=sys.stderr, flush=True)
 
 BENCHMARK_COLUMN = "benchmark"
 INSTANCE_COLUMN = "instance"
@@ -72,28 +84,47 @@ def _parse_timeout(value):
     return t if t > 0 else None
 
 
+def _wall(stream):
+    """Pump a child's merged output to stderr, each line prefixed with the box wall, so a
+    tool's chatter stays inside its thin box (mirrors log.sh's log_wall)."""
+    for line in iter(stream.readline, ""):
+        sys.stderr.write("│ " + line)
+        sys.stderr.flush()
+    stream.close()
+
+
 def _timed_run(cmd, cwd, timeout, show_output=False):
     """Run ``cmd`` to completion or until ``timeout`` seconds. Returns
     ``(elapsed_seconds, timed_out, returncode)``. Kills the whole process group on
     timeout so a tool's grandchildren don't outlive it. With ``show_output`` the tool's
-    stdout/stderr flow through to the step log (under its step banner); otherwise they
-    are discarded (used by the JSON ``instance`` subcommand to keep stdout clean)."""
+    stdout/stderr are walled into the thin box on stderr; otherwise they are discarded
+    (used by the JSON ``instance`` subcommand to keep stdout clean)."""
     start = time.monotonic()
-    sink = None if show_output else subprocess.DEVNULL
-    proc = subprocess.Popen(
-        cmd, cwd=cwd, start_new_session=True,
-        stdout=sink, stderr=sink,
-    )
+    if show_output:
+        proc = subprocess.Popen(
+            cmd, cwd=cwd, start_new_session=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        )
+        pump = threading.Thread(target=_wall, args=(proc.stdout,))
+        pump.start()
+    else:
+        proc = subprocess.Popen(
+            cmd, cwd=cwd, start_new_session=True,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        pump = None
     timed_out = False
     try:
-        proc.communicate(timeout=timeout)
+        proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        proc.communicate()
+        proc.wait()
+    if pump is not None:
+        pump.join()  # drain any output buffered before the group was killed
     return time.monotonic() - start, timed_out, proc.returncode
 
 
@@ -118,24 +149,26 @@ def run_instance(tool_dir, version, category, values, timeout, show_output=False
     ``timeout``). The tool scripts are called as ``<version> <category> <col1..colN>``
     (the instances.csv columns in file order — ``benchmark``, ``instance``, …), with the
     results file appended for the run. Returns ``{prepare_time, result, time, extra}``."""
-    log_step(f"RUNNING prepare_instance.sh (timeout {PREPARE_CAP_SECONDS}s):")
+    log_box_open(f"run prepare_instance.sh (timeout {PREPARE_CAP_SECONDS}s)")
     prep_elapsed, prep_to, prep_rc = _timed_run(
         [os.path.join(tool_dir, "prepare_instance.sh"), version, category, *values],
         tool_dir, PREPARE_CAP_SECONDS, show_output,
     )
     if prep_to or prep_rc != 0:
         why = "timeout" if prep_to else f"rc={prep_rc}"
-        log_info(f"prepare_instance.sh failed ({why}) in {prep_elapsed:.2f}s; skipping instance")
+        log_box_note(f"prepare_instance.sh failed ({why}) in {prep_elapsed:.2f}s; skipping instance")
+        log_box_close()
         # A failed prepare skips the instance (rule-compliant: it scores as unsolved).
         return {"prepare_time": round(prep_elapsed, 4), "result": "prepare_failed",
                 "time": 0.0, "extra": {}}
-    log_info(f"prepare_instance.sh done in {prep_elapsed:.2f}s")
+    log_box_note(f"prepare_instance.sh done in {prep_elapsed:.2f}s")
+    log_box_close()
 
     fd, res_path = tempfile.mkstemp(suffix=".csv")
     os.close(fd)
     try:
         cap = "no cap" if timeout is None else f"timeout {timeout:g}s"
-        log_step(f"RUNNING run_instance.sh ({cap}):")
+        log_box_open(f"run run_instance.sh ({cap})")
         run_elapsed, run_to, run_rc = _timed_run(
             [os.path.join(tool_dir, "run_instance.sh"), version, category, *values, res_path],
             tool_dir, timeout, show_output,
@@ -146,7 +179,8 @@ def run_instance(tool_dir, version, category, values, timeout, show_output=False
             result, extra = _read_tool_result(res_path)
             if not result:
                 result = "unknown" if run_rc == 0 else "error"
-        log_info(f"run_instance.sh -> {result} in {run_elapsed:.2f}s")
+        log_box_note(f"run_instance.sh -> {result} in {run_elapsed:.2f}s")
+        log_box_close()
         return {"prepare_time": round(prep_elapsed, 4), "result": result,
                 "time": round(run_elapsed, 4), "extra": extra}
     finally:
@@ -170,7 +204,9 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category
     header, rows = _read_instances(os.path.join(repo_dir, "instances.csv"))
     target = [r for r in rows if r.get(BENCHMARK_COLUMN) == benchmark_name]
 
-    log_stage(f"Start — running {benchmark_name} ({len(target)} instance(s))")
+    # The shell wrapper owns the benchmark's outer (double) superstage; here just note
+    # the count, then give each instance its own thick stage.
+    log_info(f"{len(target)} instance(s) to run for {benchmark_name}")
     extra_cols = []
     results = []
     for idx, r in enumerate(target, 1):
@@ -193,11 +229,20 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category
                 + [out["extra"].get(c, "") for c in extra_cols]
                 + [out["prepare_time"], out["result"], out["time"]]
             )
-    log_stage(f"End — finished {len(target)} instance(s); wrote {os.path.basename(out_csv)}")
+    log_info(f"finished {len(target)} instance(s); wrote {os.path.basename(out_csv)}")
     return out_csv
 
 
 def main(argv):
+    # The box-drawing banners are UTF-8; a node under a C/POSIX locale would otherwise
+    # give Python an ASCII stderr and crash on the first glyph. printf (log.sh) is immune
+    # to this, so force the streams to match.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
     if len(argv) >= 8 and argv[1] == "benchmark":
         run_benchmark(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7])
         return 0
