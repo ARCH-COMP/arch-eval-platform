@@ -54,6 +54,18 @@ def test_build_steps_graph():
     ]
 
 
+def test_ensure_categories_seeds_the_fixed_axis():
+    """The benchmark form calls this so ARCH's categories are selectable before any load."""
+    from comp_eval_platform.competitions import get_competition
+    from comp_eval_platform.core.models import Category
+
+    assert not Category.objects.exists()
+    get_competition().ensure_categories()
+    assert set(Category.objects.values_list("name", flat=True)) == {"AFF", "NLN", "AINNCS"}
+    get_competition().ensure_categories()  # idempotent
+    assert Category.objects.count() == 3
+
+
 def test_build_steps_category_load():
     """A benchmark submission is a per-category load: no benchmark name, a worker step
     that carries the repo/hash/category so the node clone + CSV read can run there."""

@@ -33,6 +33,13 @@ class ArchCompetition(Competition):
             if not submission.instances.exists():
                 raise ValidationError("An ARCH-COMP benchmark must define at least one instance.")
 
+    def ensure_categories(self) -> None:
+        """Seed ARCH's fixed category axis (AFF/NLN/AINNCS) so it's selectable on the
+        benchmark form before any load. Idempotent."""
+        from .categories import ensure_categories
+
+        ensure_categories()
+
     def load_benchmarks(self, *, category_name, repository, ref, owner) -> list:
         """Fan a category's central ``instances.csv`` (at ``repository@ref``) into one
         Benchmark per distinct benchmark, each owning its instances."""
