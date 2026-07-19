@@ -199,29 +199,10 @@ def _read_instances(path):
     return header, rows
 
 
-def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category):
-    """Run every instance of ``benchmark_name`` (from ``repo_dir/instances.csv``) and
-    write ``out_csv``. The output header is stable within the benchmark: the union of
-    tool-reported extra columns (first-seen order) sits between the identifiers and the
-    harness timings."""
-    header, rows = _read_instances(os.path.join(repo_dir, "instances.csv"))
-    target = [r for r in rows if r.get(BENCHMARK_COLUMN) == benchmark_name]
-
-    # The shell wrapper owns the benchmark's outer (double) superstage; here just note
-    # the count, then give each instance its own thick stage.
-    log_info(f"{len(target)} instance(s) to run for {benchmark_name}")
-    extra_cols = []
-    results = []
-    for idx, r in enumerate(target, 1):
-        log_stage(f"Running instance {idx}/{len(target)}: {r.get(INSTANCE_COLUMN, '')}")
-        values = [r[c] for c in header]
-        out = run_instance(tool_dir, version, category, values,
-                           _parse_timeout(r.get(TIMEOUT_COLUMN)), show_output=True)
-        for k in out["extra"]:
-            if k not in extra_cols:
-                extra_cols.append(k)
-        results.append((r, out))
-
+def _write_results(out_csv, extra_cols, results):
+    """(Re)write the whole results.csv from the rows collected so far. Called after each
+    instance so the backend can stream the file live; a full rewrite (not an append) keeps
+    the header correct even as a later instance introduces a new tool-reported column."""
     out_header = [BENCHMARK_COLUMN, INSTANCE_COLUMN] + extra_cols + ["prepare_time", RESULT_COLUMN, "time"]
     with open(out_csv, "w", newline="") as fh:
         writer = csv.writer(fh)
@@ -232,6 +213,33 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category
                 + [out["extra"].get(c, "") for c in extra_cols]
                 + [out["prepare_time"], out["result"], out["time"]]
             )
+
+
+def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category):
+    """Run every instance of ``benchmark_name`` (from ``repo_dir/instances.csv``) and
+    write ``out_csv``. The output header is stable within the benchmark: the union of
+    tool-reported extra columns (first-seen order) sits between the identifiers and the
+    harness timings. The file is rewritten after each instance so the backend can show
+    results as they land, not only at the end."""
+    header, rows = _read_instances(os.path.join(repo_dir, "instances.csv"))
+    target = [r for r in rows if r.get(BENCHMARK_COLUMN) == benchmark_name]
+
+    # The shell wrapper owns the benchmark's outer (double) superstage; each instance
+    # then gets its own thick stage.
+    extra_cols = []
+    results = []
+    _write_results(out_csv, extra_cols, results)  # header up front, so 0/N reads live
+    for idx, r in enumerate(target, 1):
+        log_stage(f"Running instance {idx}/{len(target)}: {r.get(INSTANCE_COLUMN, '')}")
+        values = [r[c] for c in header]
+        out = run_instance(tool_dir, version, category, values,
+                           _parse_timeout(r.get(TIMEOUT_COLUMN)), show_output=True)
+        for k in out["extra"]:
+            if k not in extra_cols:
+                extra_cols.append(k)
+        results.append((r, out))
+        _write_results(out_csv, extra_cols, results)
+
     log_info(f"finished {len(target)} instance(s); wrote {os.path.basename(out_csv)}")
     return out_csv
 

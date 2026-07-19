@@ -156,6 +156,14 @@ class ArchRunBenchmarkHandler(StepHandler):
             "hash": b.hash or "",
         })
 
+    def while_active(self):
+        """Stream the node log + partial results so the UI shows rows and a processed
+        count as instances land (the harness writes a header row, unlike VNN)."""
+        super().while_active()
+        b = self._benchmark()
+        if b is not None:
+            self.refresh_run_progress(f"/home/ubuntu/logs/results_{b.id}.csv", b, has_header=True)
+
     def can_abort_benchmark(self) -> bool:
         return True
 
