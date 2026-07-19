@@ -50,10 +50,6 @@ def log_stage(msg):
     print(f"\n┏{_LOG_THICK}\n┃ {_log_tag()} · {msg}\n┗{_LOG_THICK}", file=sys.stderr, flush=True)
 
 
-def log_info(msg):
-    print(f"{_log_tag()} · {msg}", file=sys.stderr, flush=True)
-
-
 # Thin box that walls a tool's stdout/stderr so its chatter can't break the layout.
 def log_box_open(msg):
     print(f"┌{_LOG_THIN}\n│ {_log_tag()} · {msg}", file=sys.stderr, flush=True)
@@ -240,7 +236,8 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category
         results.append((r, out))
         _write_results(out_csv, extra_cols, results)
 
-    log_info(f"finished {len(target)} instance(s); wrote {os.path.basename(out_csv)}")
+    # The shell wrapper closes the run with its End superstage (carrying the count, read
+    # off the results file), mirroring VNN — nothing to print here.
     return out_csv
 
 

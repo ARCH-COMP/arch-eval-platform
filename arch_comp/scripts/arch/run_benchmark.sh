@@ -51,13 +51,18 @@ if [ ! -d /home/ubuntu/benchmarks_repo/.git ]; then
 fi
 
 # The harness prints its own per-instance banners; close the stage on its exit status.
+# The End superstage carries the instance count (results.csv rows, minus its header),
+# so the run needs no separate 'finished' line — matching VNN.
 export BENCHMARKS_DIR=/home/ubuntu/benchmarks_repo
+results_file=/home/ubuntu/logs/results_${benchmark_id}.csv
 if python3 /home/ubuntu/harness.py benchmark \
     /home/ubuntu/benchmarks_repo \"${benchmark_name}\" \
     /home/ubuntu/tool/${script_dir} \
-    /home/ubuntu/logs/results_${benchmark_id}.csv \
+    \${results_file} \
     \"${version}\" \"${category}\"; then
-    log_superstage 'End — benchmark run done'
+    lines=\$(wc -l < \${results_file} 2>/dev/null || echo 1)
+    count=\$(( lines > 0 ? lines - 1 : 0 ))
+    log_superstage \"End — finished \${count} instance(s); results in \${results_file}\"
     report success
 else
     log_superstage 'End — benchmark run FAILED'
