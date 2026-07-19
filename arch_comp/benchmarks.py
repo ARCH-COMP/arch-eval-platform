@@ -27,6 +27,10 @@ BENCHMARK_COLUMN = "benchmark"
 INSTANCE_COLUMN = "instance"
 TIMEOUT_COLUMN = "timeout"
 
+# Where load_benchmark.sh clones a category's central repo on the worker; the load
+# step reads this path back to fan instances.csv into benchmarks.
+CLONE_DIR = "/home/ubuntu/benchmarks_repo"
+
 
 def parse_instances_csv(text: str):
     """Return ``(header, rows)`` for an ``instances.csv``, where ``rows`` is a list of
@@ -64,14 +68,17 @@ def group_by_benchmark(rows):
 
 @transaction.atomic
 def load_benchmarks_from_csv(*, category, repository, ref, owner, csv_text):
-    """Create/refresh ``category``'s benchmarks from ``instances.csv`` text. Re-loading
-    replaces each benchmark's instances, so pointing a category at a new hash is
-    idempotent. Loaded benchmarks are published (selectable at tool-submission time)."""
+    """Replace ``category``'s benchmarks with those in ``instances.csv`` text. Re-loading
+    is a full overwrite of the category: each benchmark's instances are replaced, and any
+    benchmark no longer present in the CSV is removed, so pointing a category at a new hash
+    leaves exactly the CSV's set. Loaded benchmarks are published (selectable at
+    tool-submission time)."""
     from comp_eval_platform.core.models import Benchmark, Instance
 
     header, rows = parse_instances_csv(csv_text)
+    groups = group_by_benchmark(rows)
     benchmarks = []
-    for name, group in group_by_benchmark(rows).items():
+    for name, group in groups.items():
         benchmark, _ = Benchmark.objects.update_or_create(
             category=category, name=name,
             defaults={
@@ -85,6 +92,8 @@ def load_benchmarks_from_csv(*, category, repository, ref, owner, csv_text):
             for i, row in enumerate(group)
         ])
         benchmarks.append(benchmark)
+    # Drop benchmarks the new CSV dropped, so the category mirrors the repo exactly.
+    Benchmark.objects.filter(category=category).exclude(name__in=groups.keys()).delete()
     return benchmarks
 
 

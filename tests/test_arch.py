@@ -54,6 +54,78 @@ def test_build_steps_graph():
     ]
 
 
+def test_build_steps_category_load():
+    """A benchmark submission is a per-category load: no benchmark name, a worker step
+    that carries the repo/hash/category so the node clone + CSV read can run there."""
+    from comp_eval_platform.competitions import get_competition
+    from comp_eval_platform.core.models import Category, Task
+
+    from arch_comp import kinds
+
+    cat = Category.objects.create(name="AINNCS")
+    task = Task.objects.create(owner=_user(), category=cat,
+                               extra={"repository": "https://x/r", "hash": "abc"})
+    get_competition().build_steps(task)
+
+    assert list(task.step_set.order_by("order").values_list("kind", flat=True)) == [
+        kinds.CREATE, "assign", kinds.LOAD, "shutdown",
+    ]
+    load = task.step_set.get(kind=kinds.LOAD)
+    assert load.payload == {"category_id": str(cat.id), "repository": "https://x/r", "hash": "abc"}
+
+
+def test_load_benchmarks_overwrite_prunes_dropped():
+    """Re-loading a category mirrors the CSV: a benchmark dropped from it is removed."""
+    from arch_comp.benchmarks import load_benchmarks_from_csv
+    from comp_eval_platform.core.models import Benchmark, Category
+
+    cat = Category.objects.create(name="AINNCS")
+    owner = _user()
+    load_benchmarks_from_csv(category=cat, repository="r", ref="1", owner=owner,
+                             csv_text="benchmark,instance\nACC,a1\nTORA,t1\n")
+    assert set(Benchmark.objects.filter(category=cat).values_list("name", flat=True)) == {"ACC", "TORA"}
+
+    load_benchmarks_from_csv(category=cat, repository="r", ref="2", owner=owner,
+                             csv_text="benchmark,instance\nACC,a1\nACC,a2\n")
+    assert set(Benchmark.objects.filter(category=cat).values_list("name", flat=True)) == {"ACC"}
+    assert Benchmark.objects.get(category=cat, name="ACC").instances.count() == 2
+
+
+def test_load_handler_loads_category_from_node(monkeypatch):
+    """The load step reads instances.csv back off the node and records the exact sha."""
+    import comp_eval_platform.compute.shell as shell
+    from comp_eval_platform.core.models import Benchmark, Category, Task, TaskStep
+
+    from arch_comp import kinds
+    from arch_comp import steps as arch_steps
+
+    cat = Category.objects.create(name="AINNCS")
+    task = Task.objects.create(owner=_user(), category=cat, extra={"repository": "r", "hash": ""})
+    step = TaskStep.objects.create(task=task, kind=kinds.LOAD, order=0,
+                                   payload={"category_id": str(cat.id), "repository": "r", "hash": ""})
+
+    monkeypatch.setattr(arch_steps, "_node_ip", lambda t: "1.2.3.4")
+    monkeypatch.setattr(shell, "node_exec",
+                        lambda ip, cmd, **k: "benchmark,instance\nACC,a1\n" if "cat " in cmd else "deadbeef")
+
+    step.handler.on_marked_done()
+
+    b = Benchmark.objects.get(category=cat, name="ACC")
+    assert b.published and b.hash == "deadbeef"  # sha from the node, not the empty submitted hash
+
+
+def test_overview_labels_category_task_by_category():
+    """A per-category benchmark task shows its category (not a name) + repo on the overview."""
+    from comp_eval_platform.core.models import Category, Task
+    from comp_eval_platform.core.serializers import TaskListSerializer
+
+    cat = Category.objects.create(name="AINNCS")
+    task = Task.objects.create(owner=_user(), category=cat, extra={"repository": "https://x/r"})
+    data = TaskListSerializer(task).data
+    assert data["name"] == "AINNCS"
+    assert data["repository"] == "https://x/r"
+
+
 def test_build_steps_respects_selected_benchmarks():
     """A tool runs only the benchmarks it opted into (tool.extra['benchmarks'])."""
     from comp_eval_platform.competitions import get_competition

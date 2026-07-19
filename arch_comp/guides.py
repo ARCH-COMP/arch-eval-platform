@@ -143,32 +143,40 @@ def benchmark_guide() -> Guide:
               "category — not one per benchmark — with a single `instances.csv` over all of them.",
         pipeline=[
             {
-                "title": "Provide the Source",
+                "title": "Create Submission",
                 "details": [
-                    "You give the category, the benchmarks repository, and a commit hash. That is "
-                    "the whole submission: the benchmarks themselves live in the repository.",
+                    "The submission is recorded from what you enter on the form: the category, the "
+                    "benchmarks repository, and a commit hash. There is no per-benchmark name — one "
+                    "submission covers the whole category. Nothing runs on a worker yet, so this "
+                    "step passes immediately.",
                 ],
             },
             {
-                "title": "Load instances.csv",
+                "title": "Assign Worker",
                 "details": [
-                    "The platform reads `instances.csv` at that commit — the one file that lists "
-                    "every benchmark and instance in the category.",
+                    "The task waits for a worker and attaches it — an AWS instance or a Docker "
+                    "container, depending on the deployment. Loading runs on a worker (so it can "
+                    "later do more than read a file), reached over SSH like every other step.",
                 ],
             },
             {
-                "title": "Create Benchmarks",
+                "title": "Load Benchmarks",
                 "details": [
-                    "The rows are fanned out into one benchmark per distinct `benchmark` value, "
-                    "each owning its instances. Loading a newer commit for the same category "
-                    "replaces them, so the set stays in step with the repository.",
+                    "The worker clones the repository at the submitted commit and its "
+                    "`instances.csv` is read back — the one file that lists every benchmark and "
+                    "instance in the category. The rows are fanned out into one benchmark per "
+                    "distinct `benchmark` value, each owning its instances.",
+                    "Loading is a full overwrite of the category: benchmarks dropped from the CSV "
+                    "are removed and the rest are replaced, so the set always mirrors the "
+                    "repository at that commit. Each submission is its own entry on the overview.",
                 ],
             },
             {
-                "title": "Available to Tools",
+                "title": "Shutdown",
                 "details": [
-                    "The loaded benchmarks become selectable when a tool is submitted in that "
-                    "category, and organizers can group them into evaluation tracks.",
+                    "The worker is released. The loaded benchmarks are now published — selectable "
+                    "when a tool is submitted in that category, and groupable into evaluation "
+                    "tracks by organizers.",
                 ],
             },
         ],

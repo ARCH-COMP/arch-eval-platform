@@ -77,8 +77,13 @@ class ArchCompetition(Competition):
                 steps.append(add(kinds.RUN_BENCHMARK, benchmark_id=str(b.id)))
             steps.append(add(SHUTDOWN_KIND))
         else:
+            # A benchmark submission loads a whole category from one central repo. The
+            # clone + read happens on a worker (it may grow to do more than parse a CSV),
+            # then LOAD fans instances.csv into this category's benchmarks.
+            extra = task.extra or {}
             steps += [add(kinds.CREATE), add("assign"),
-                      add(kinds.RUN_BENCHMARK, benchmark_id=str(task.benchmark.id)),
+                      add(kinds.LOAD, category_id=str(task.category_id),
+                          repository=extra.get("repository", ""), hash=extra.get("hash", "")),
                       add(SHUTDOWN_KIND)]
         return steps
 

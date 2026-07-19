@@ -46,6 +46,58 @@ class ArchInstallHandler(StepHandler):
 
 
 @register_step_handler
+class ArchLoadHandler(StepHandler):
+    """Load a category's benchmarks from its central repo. The node clones the repo at
+    the submitted ref (room to grow into more than a CSV read); on completion we pull
+    its ``instances.csv`` back and fan it into this category's benchmarks."""
+
+    kind = kinds.LOAD
+    node_log_path = "logs/load.log"  # load_benchmark.sh tees the clone here
+
+    def execute(self):
+        ip = _node_ip(self.task)
+        if ip is None:
+            self.task.step_failed(check_status=False)
+            return
+        _ping("arch", "load_benchmark.sh", {
+            "benchmark_ip": ip,
+            "task_id": str(self.task.id),
+            "repository": self.step.payload.get("repository", ""),
+            "hash": self.step.payload.get("hash", ""),
+        })
+
+    def retry_until_success(self) -> bool:
+        return True  # clones are flaky (network); retry rather than fail the task
+
+    def on_marked_done(self):
+        """Read the cloned ``instances.csv`` off the node and load the category. The
+        node is still up (shutdown runs next). Records the exact commit for
+        reproducibility when the submission gave no hash."""
+        from comp_eval_platform.compute.shell import node_exec
+        from comp_eval_platform.core.models import Category
+
+        from .benchmarks import CLONE_DIR, INSTANCES_FILE, load_benchmarks_from_csv
+
+        ip = _node_ip(self.task)
+        category = Category.objects.filter(id=self.step.payload.get("category_id")).first()
+        if ip is None or category is None:
+            return
+        csv_text = node_exec(ip, f"cat {CLONE_DIR}/{INSTANCES_FILE} 2>/dev/null")
+        if not csv_text.strip():
+            self._append_log(f"no {INSTANCES_FILE} found on the node; nothing loaded")
+            return
+        sha = node_exec(ip, f"git -C {CLONE_DIR} rev-parse HEAD 2>/dev/null").strip()
+        benchmarks = load_benchmarks_from_csv(
+            category=category, repository=self.step.payload.get("repository", ""),
+            ref=sha or self.step.payload.get("hash", ""), owner=self.task.owner, csv_text=csv_text,
+        )
+        self._append_log(f"loaded {len(benchmarks)} benchmark(s) for category {category.name}")
+
+    def _append_log(self, line: str):
+        self.step.set_log(((self.step.logs or "") + f"\n[load] {line}").strip())
+
+
+@register_step_handler
 class ArchRunBenchmarkHandler(StepHandler):
     kind = kinds.RUN_BENCHMARK
 
