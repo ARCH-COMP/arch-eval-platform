@@ -35,7 +35,10 @@ PREPARE_CAP_SECONDS = 600
 # clean stdout; the run wrapper tees both into the step log. Tiers by prominence: a
 # thick stage (a per-instance boundary here) wraps a thin box that walls the tool's own
 # output — the outer double superstage is owned by the shell wrapper, not the harness.
-_LOG_THICK = "━" * 60
+# Heavy `━` renders narrower (~0.9x) than the light `─`/double `═` cells in fonts that
+# substitute the box glyphs, so thick's count is padded to match lib/log.sh — its
+# rendered width then lands between the double superstage and the thin box.
+_LOG_THICK = "━" * 66
 _LOG_THIN = "─" * 58
 
 
