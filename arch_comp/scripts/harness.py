@@ -92,12 +92,30 @@ def _wall(stream):
     stream.close()
 
 
+#: Process group of the instance currently running, or None between instances. Read by
+#: the SIGTERM handler so a per-benchmark abort can reap the running tool's whole tree.
+_active_pgid = None
+
+
+def _handle_term(_signum, _frame):
+    """On an external abort (SIGTERM from the per-benchmark abort), kill the instance
+    currently running — its whole process group, since a verifier may spawn children —
+    then exit promptly, so an aborted benchmark leaves nothing burning CPU."""
+    if _active_pgid is not None:
+        try:
+            os.killpg(_active_pgid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    os._exit(143)  # 128 + SIGTERM; we are being torn down, skip cleanup
+
+
 def _timed_run(cmd, cwd, timeout, show_output=False):
     """Run ``cmd`` to completion or until ``timeout`` seconds. Returns
     ``(elapsed_seconds, timed_out, returncode)``. Kills the whole process group on
     timeout so a tool's grandchildren don't outlive it. With ``show_output`` the tool's
     stdout/stderr are walled into the thin box on stderr; otherwise they are discarded
     (used by the JSON ``instance`` subcommand to keep stdout clean)."""
+    global _active_pgid
     start = time.monotonic()
     if show_output:
         proc = subprocess.Popen(
@@ -112,6 +130,7 @@ def _timed_run(cmd, cwd, timeout, show_output=False):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         pump = None
+    _active_pgid = proc.pid  # its own group (start_new_session); for the abort/timeout kill
     timed_out = False
     try:
         proc.wait(timeout=timeout)
@@ -122,6 +141,8 @@ def _timed_run(cmd, cwd, timeout, show_output=False):
         except ProcessLookupError:
             pass
         proc.wait()
+    finally:
+        _active_pgid = None
     if pump is not None:
         pump.join()  # drain any output buffered before the group was killed
     return time.monotonic() - start, timed_out, proc.returncode
@@ -200,7 +221,8 @@ def _write_results(out_csv, extra_cols, results):
     instance so the backend can stream the file live; a full rewrite (not an append) keeps
     the header correct even as a later instance introduces a new tool-reported column."""
     out_header = [BENCHMARK_COLUMN, INSTANCE_COLUMN] + extra_cols + ["prepare_time", RESULT_COLUMN, "time"]
-    with open(out_csv, "w", newline="") as fh:
+    tmp = out_csv + ".tmp"
+    with open(tmp, "w", newline="") as fh:
         writer = csv.writer(fh)
         writer.writerow(out_header)
         for r, out in results:
@@ -209,6 +231,9 @@ def _write_results(out_csv, extra_cols, results):
                 + [out["extra"].get(c, "") for c in extra_cols]
                 + [out["prepare_time"], out["result"], out["time"]]
             )
+    # Atomic swap: a concurrent read (live stream, or abort finalizing partial results)
+    # sees either the previous complete file or this one, never a half-written CSV.
+    os.replace(tmp, out_csv)
 
 
 def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category):
@@ -250,6 +275,9 @@ def main(argv):
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):
             pass
+
+    # A per-benchmark abort SIGTERMs the run tree; reap the running instance's group first.
+    signal.signal(signal.SIGTERM, _handle_term)
 
     if len(argv) >= 8 and argv[1] == "benchmark":
         run_benchmark(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7])

@@ -34,6 +34,9 @@ export COMP_LABEL=\"${COMP_LABEL:-ARCH-COMP}\"
 cd /home/ubuntu || exit 1
 mkdir -p logs
 exec > >(tee ${remote_log_path}) 2>&1
+# tmux runs this pane in its own session, so this bash leads the process group; record it
+# so a per-benchmark abort can SIGTERM the whole run tree (pane + harness) in one shot.
+echo \$\$ > /home/ubuntu/run_${benchmark_id}.pgid
 log_superstage 'Start — running ${benchmark_name}'
 
 report() {  # success|failure — POST the log tail so the error survives node teardown

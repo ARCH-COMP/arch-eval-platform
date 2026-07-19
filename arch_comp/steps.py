@@ -167,15 +167,25 @@ class ArchRunBenchmarkHandler(StepHandler):
     def can_abort_benchmark(self) -> bool:
         return True
 
-    def abort_benchmark(self):
-        """Stop the node-side run (best-effort) and move on to the next benchmark."""
+    def _kill_run(self):
+        """Stop the node-side run tree. run_benchmark.sh records the tmux pane's process
+        group; a SIGTERM to it brings down the pane and the harness, and harness.py's own
+        handler reaps the instance it was running (a detached group of its own), so nothing
+        keeps burning CPU while the next benchmark runs — matching VNN's group-kill."""
         from comp_eval_platform.compute.shell import node_exec
 
         ip = _node_ip(self.task)
         b = self._benchmark()
-        if ip is not None and b is not None:
-            node_exec(ip, f"tmux kill-session -t run_{b.id} 2>/dev/null; true")
-        self.task.step_succeeded(check_status=False)
+        if ip is None or b is None:
+            return
+        node_exec(ip, f"kill -TERM -- -$(cat /home/ubuntu/run_{b.id}.pgid) 2>/dev/null; "
+                      f"tmux kill-session -t run_{b.id} 2>/dev/null; true")
+
+    def abort_benchmark(self):
+        """Stop this benchmark and move on to the next, recording it as aborted (its
+        partial results are finalized first)."""
+        self._kill_run()
+        self.task.step_aborted()
 
     def on_marked_done(self):
         """Fetch the node's results.csv, parse per category, and persist Result rows."""
