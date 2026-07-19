@@ -27,7 +27,7 @@ def toolkit_guide() -> Guide:
               "submissions that already ran, use the submissions page.",
         pipeline=[
             {
-                "title": "Create submission",
+                "title": "Create Submission",
                 "details": [
                     "The submission is recorded with what you chose on the form: the repository "
                     "and commit, the Docker base image, the category you enter, and the benchmarks "
@@ -39,7 +39,7 @@ def toolkit_guide() -> Guide:
                 ],
             },
             {
-                "title": "Assign worker",
+                "title": "Assign Worker",
                 "details": [
                     "The task waits for a worker and attaches it — an AWS instance or a Docker "
                     "container, depending on how the deployment is configured. Every later step "
@@ -48,7 +48,7 @@ def toolkit_guide() -> Guide:
                 ],
             },
             {
-                "title": "Install tool",
+                "title": "Install Tool",
                 "details": [
                     "Your repository is cloned at the submitted commit into the base image you "
                     "named, and `install_tool.sh v1` runs to install the tool, its dependencies, "
@@ -58,7 +58,7 @@ def toolkit_guide() -> Guide:
                 ],
             },
             {
-                "title": "Run benchmark",
+                "title": "Run Benchmark",
                 "details": [
                     "One step per selected benchmark, so a benchmark that fails does not take the "
                     "others with it. For each instance the worker runs `prepare_instance.sh v1 "
@@ -84,7 +84,7 @@ def toolkit_guide() -> Guide:
         ],
         sections=[
             {
-                "heading": "What your repository must contain",
+                "heading": "What Your Repository Must Contain",
                 "blocks": [
                     {"type": "text", "text":
                         f"The [tool skeleton repository]({TOOL_SKELETON}) is the minimal layout the "
@@ -109,7 +109,7 @@ def toolkit_guide() -> Guide:
                 ],
             },
             {
-                "heading": "Reporting results",
+                "heading": "Reporting Results",
                 "blocks": [
                     {"type": "text", "text":
                         "`run_instance.sh` writes its results file as a header row plus one data "
@@ -143,7 +143,7 @@ def benchmark_guide() -> Guide:
               "category — not one per benchmark — with a single `instances.csv` over all of them.",
         pipeline=[
             {
-                "title": "Provide the source",
+                "title": "Provide the Source",
                 "details": [
                     "You give the category, the benchmarks repository, and a commit hash. That is "
                     "the whole submission: the benchmarks themselves live in the repository.",
@@ -157,7 +157,7 @@ def benchmark_guide() -> Guide:
                 ],
             },
             {
-                "title": "Create benchmarks",
+                "title": "Create Benchmarks",
                 "details": [
                     "The rows are fanned out into one benchmark per distinct `benchmark` value, "
                     "each owning its instances. Loading a newer commit for the same category "
@@ -165,7 +165,7 @@ def benchmark_guide() -> Guide:
                 ],
             },
             {
-                "title": "Available to tools",
+                "title": "Available to Tools",
                 "details": [
                     "The loaded benchmarks become selectable when a tool is submitted in that "
                     "category, and organizers can group them into evaluation tracks.",
@@ -174,7 +174,7 @@ def benchmark_guide() -> Guide:
         ],
         sections=[
             {
-                "heading": "What your repository must contain",
+                "heading": "What Your Repository Must Contain",
                 "blocks": [
                     {"type": "text", "text":
                         f"The [benchmark skeleton repository]({BENCHMARK_SKELETON}) is the minimal "
