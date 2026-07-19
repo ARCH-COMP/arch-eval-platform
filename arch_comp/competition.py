@@ -15,6 +15,7 @@ from comp_eval_platform.results import Branding, Landing, Presentation, Scoreboa
 
 from . import kinds
 from .categories import get_category_spec
+from .guides import benchmark_guide, toolkit_guide
 
 
 class ArchCompetition(Competition):
@@ -139,4 +140,5 @@ class ArchCompetition(Competition):
                     "url": "https://vnn.repeatability.cps.cit.tum.de",
                 },
             ),
+            guides={"toolkit": toolkit_guide(), "benchmark": benchmark_guide()},
         )

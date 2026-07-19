@@ -136,3 +136,24 @@ def test_score_is_category_aware():
     board = get_competition().score(track)
     assert board.columns == ["tool", "category", "solved", "time"]
     assert board.rows == [{"tool": "cora", "category": "AINNCS", "solved": 1, "time": 3.0}]
+
+
+def test_guides_cover_both_submission_pages():
+    """The shell asks for these two by name and falls back to neutral copy without them,
+    which would quietly drop every ARCH-specific instruction from the info pages."""
+    from comp_eval_platform.competitions import get_competition
+
+    guides = get_competition().presentation().guides
+    assert set(guides) == {"toolkit", "benchmark"}
+    for g in guides.values():
+        assert g.intro and g.pipeline and g.sections
+        assert all(s["title"] and s["details"] for s in g.pipeline)
+
+
+def test_guides_link_the_github_skeleton_repos():
+    """The guides point submitters at the example repos on GitHub, not at zip assets."""
+    from comp_eval_platform.competitions import get_competition
+
+    prose = repr(get_competition().presentation().guides)
+    assert "https://github.com/ARCH-COMP/example_toolkit" in prose
+    assert "https://github.com/ARCH-COMP/example_benchmark" in prose
