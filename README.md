@@ -1,23 +1,37 @@
 # arch-comp
 
-The **ARCH-COMP** variant of [comp-eval-platform](../comp-eval-platform), professionalized
-onto the same structured rung as VNN: an ARCH tool defines a Docker base image,
-the engine clones the tool into it, installs + activates the license, then runs
-each benchmark's instances.
+The **ARCH-COMP** variant of [comp-eval-platform](../comp-eval-platform): the `arch_comp` plugin
+app plus its deploy config, depending on the core engine. An ARCH tool defines a Docker base
+image; the engine clones the tool in, installs it, then runs each benchmark category's instances.
+All the heavy lifting lives in core; this repo is the ARCH-specific seams, category specs, step
+handlers, and node scripts.
 
-The variant is:
-- `arch_comp/competition.py` — the six seams.
-- `arch_comp/categories.py` — **per-category** specs (result fields + parser),
-  the ARCH-specific axis. `ArchCompetition` dispatches parsing/scoring by a
-  submission's category. Ships `default` + `AINNCS` (CORA timing breakdown).
-- `arch_comp/steps.py` — step handlers (create / install / run_benchmark).
-- `deploy/` — settings (`ACTIVE_COMPETITION="arch"`) + `manage.py`.
+## Requirements
 
-Adding a category = a new `CategorySpec` subclass; adding a competition = a repo
-like this. No core changes.
+- Docker + Docker Compose (Docker Desktop on macOS/Windows). The backend mounts the host Docker
+  socket to run worker containers.
+- Git.
 
-## Test
+## Getting started
+
+Clone this repo and the core engine **side by side** under the same parent directory (the compose
+file mounts `../comp-eval-platform`):
+
 ```bash
-docker run --rm -v "<core>:/core" -v "$PWD:/arch" -w /arch python:3.11-slim \
+git clone <core-repo>   comp-eval-platform
+git clone <this-repo>   arch-comp-new
+cd arch-comp-new && docker compose up --build
+```
+
+- Frontend: <http://localhost:5174>  (one above the VNN stack, so both run side by side)
+- Public URL (optional): `docker compose logs cloudflared | grep trycloudflare`
+
+The backend installs core + this plugin, migrates, seeds settings, and serves. The **first
+account you sign up becomes the admin**; later signups start disabled until an admin enables them.
+
+## Tests
+
+```bash
+docker run --rm -v "../comp-eval-platform:/core" -v "$PWD:/arch" -w /arch python:3.11-slim \
   sh -c "pip install -q -e '/core[dev]' -e /arch && pytest"
 ```
