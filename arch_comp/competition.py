@@ -147,7 +147,7 @@ class ArchCompetition(Competition):
                 ],
                 contacts=["nico.holzinger@tum.de", "tobias.ladner@tum.de"],
                 related={
-                    "text": "Verifying standalone neural networks? Check out VNN-COMP!",
+                    "text": "Interested in verifying standalone neural networks? Check out VNN-COMP!",
                     "label": "Visit VNN-COMP",
                     "url": "https://vnn.repeatability.cps.cit.tum.de",
                 },
