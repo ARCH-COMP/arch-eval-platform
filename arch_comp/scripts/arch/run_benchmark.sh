@@ -21,17 +21,20 @@ ssh_opts="-o StrictHostKeyChecking=accept-new -i ${ssh_key}"
 remote_script_path="/home/ubuntu/run_benchmark_${benchmark_id}.sh"
 remote_log_path="/home/ubuntu/logs/run_${benchmark_id}.log"
 
-# Ship the node-side harness (lives beside the backend wrappers, one dir up).
+# Ship the node-side harness (lives beside the backend wrappers, one dir up) and the
+# shared logging helpers, so the remote banners match every other stage.
 ssh $ssh_opts "$node" "mkdir -p /home/ubuntu/logs"
 scp $ssh_opts "${script_here}/../harness.py" "${node}:/home/ubuntu/harness.py"
+scp $ssh_opts "${COMP_LOG_LIB}" "${node}:/home/ubuntu/comp_log.sh"
 
 ssh $ssh_opts "$node" "cat > ${remote_script_path} <<'REMOTE_SCRIPT'
 #!/bin/bash
+export COMP_LABEL=\"${COMP_LABEL:-ARCH-COMP}\"
+. /home/ubuntu/comp_log.sh
 cd /home/ubuntu || exit 1
 mkdir -p logs
 exec > >(tee ${remote_log_path}) 2>&1
-set -x
-echo '[INFO] benchmark run started'
+log_stage 'Start — running ${benchmark_name}'
 
 report() {  # success|failure — POST the log tail so the error survives node teardown
     tail -c 200000 ${remote_log_path} > /tmp/run_${benchmark_id}.tail 2>/dev/null || true
@@ -41,19 +44,25 @@ report() {  # success|failure — POST the log tail so the error survives node t
 
 # Clone the category benchmarks repo once (holds instances.csv + the benchmark data).
 if [ ! -d /home/ubuntu/benchmarks_repo/.git ]; then
+    log_step 'Cloning ${repository}'
     rm -rf /home/ubuntu/benchmarks_repo
-    git clone ${repository} /home/ubuntu/benchmarks_repo || { report failure; exit 1; }
+    git clone ${repository} /home/ubuntu/benchmarks_repo || { log_stage 'End — clone FAILED'; report failure; exit 1; }
     if [ -n \"${hash}\" ]; then git -C /home/ubuntu/benchmarks_repo checkout ${hash}; fi
 fi
 
+# The harness prints its own per-instance banners; close the stage on its exit status.
 export BENCHMARKS_DIR=/home/ubuntu/benchmarks_repo
-python3 /home/ubuntu/harness.py benchmark \
+if python3 /home/ubuntu/harness.py benchmark \
     /home/ubuntu/benchmarks_repo \"${benchmark_name}\" \
     /home/ubuntu/tool/${script_dir} \
     /home/ubuntu/logs/results_${benchmark_id}.csv \
-    \"${version}\" \"${category}\" \
-    && report success \
-    || report failure
+    \"${version}\" \"${category}\"; then
+    log_stage 'End — benchmark run done'
+    report success
+else
+    log_stage 'End — benchmark run FAILED'
+    report failure
+fi
 REMOTE_SCRIPT
 chmod +x ${remote_script_path}
 tmux kill-session -t run_${benchmark_id} 2>/dev/null

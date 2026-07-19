@@ -29,6 +29,28 @@ import time
 #: category's own, from the instances.csv ``timeout`` column (or uncapped).
 PREPARE_CAP_SECONDS = 600
 
+# Harmonized system-level logging, mirroring scripts/lib/log.sh so ARCH's node logs read
+# the same as VNN's. Written to stderr so the "instance" subcommand's JSON stays on a
+# clean stdout; the run wrapper tees both into the step log.
+_LOG_BAR = "#" * 63
+_LOG_RULE = "-" * 63
+
+
+def _log_tag():
+    return f"[{os.getenv('COMP_LABEL', 'ARCH-COMP')} | {time.strftime('%H:%M:%S', time.gmtime())}]"
+
+
+def log_stage(msg):
+    print(f"\n{_LOG_BAR}\n{_log_tag()} {msg}\n{_LOG_BAR}", file=sys.stderr, flush=True)
+
+
+def log_step(msg):
+    print(f"\n{_LOG_RULE}\n- {_log_tag()} {msg}", file=sys.stderr, flush=True)
+
+
+def log_info(msg):
+    print(f"{_log_tag()} {msg}", file=sys.stderr, flush=True)
+
 BENCHMARK_COLUMN = "benchmark"
 INSTANCE_COLUMN = "instance"
 TIMEOUT_COLUMN = "timeout"
@@ -50,14 +72,17 @@ def _parse_timeout(value):
     return t if t > 0 else None
 
 
-def _timed_run(cmd, cwd, timeout):
+def _timed_run(cmd, cwd, timeout, show_output=False):
     """Run ``cmd`` to completion or until ``timeout`` seconds. Returns
     ``(elapsed_seconds, timed_out, returncode)``. Kills the whole process group on
-    timeout so a tool's grandchildren don't outlive it."""
+    timeout so a tool's grandchildren don't outlive it. With ``show_output`` the tool's
+    stdout/stderr flow through to the step log (under its step banner); otherwise they
+    are discarded (used by the JSON ``instance`` subcommand to keep stdout clean)."""
     start = time.monotonic()
+    sink = None if show_output else subprocess.DEVNULL
     proc = subprocess.Popen(
         cmd, cwd=cwd, start_new_session=True,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        stdout=sink, stderr=sink,
     )
     timed_out = False
     try:
@@ -88,26 +113,32 @@ def _read_tool_result(path):
     return result, extra
 
 
-def run_instance(tool_dir, version, category, values, timeout):
+def run_instance(tool_dir, version, category, values, timeout, show_output=False):
     """Run one instance: prepare (capped at ``PREPARE_CAP_SECONDS``) then run (capped at
     ``timeout``). The tool scripts are called as ``<version> <category> <col1..colN>``
     (the instances.csv columns in file order — ``benchmark``, ``instance``, …), with the
     results file appended for the run. Returns ``{prepare_time, result, time, extra}``."""
+    log_step(f"RUNNING prepare_instance.sh (timeout {PREPARE_CAP_SECONDS}s):")
     prep_elapsed, prep_to, prep_rc = _timed_run(
         [os.path.join(tool_dir, "prepare_instance.sh"), version, category, *values],
-        tool_dir, PREPARE_CAP_SECONDS,
+        tool_dir, PREPARE_CAP_SECONDS, show_output,
     )
     if prep_to or prep_rc != 0:
+        why = "timeout" if prep_to else f"rc={prep_rc}"
+        log_info(f"prepare_instance.sh failed ({why}) in {prep_elapsed:.2f}s; skipping instance")
         # A failed prepare skips the instance (rule-compliant: it scores as unsolved).
         return {"prepare_time": round(prep_elapsed, 4), "result": "prepare_failed",
                 "time": 0.0, "extra": {}}
+    log_info(f"prepare_instance.sh done in {prep_elapsed:.2f}s")
 
     fd, res_path = tempfile.mkstemp(suffix=".csv")
     os.close(fd)
     try:
+        cap = "no cap" if timeout is None else f"timeout {timeout:g}s"
+        log_step(f"RUNNING run_instance.sh ({cap}):")
         run_elapsed, run_to, run_rc = _timed_run(
             [os.path.join(tool_dir, "run_instance.sh"), version, category, *values, res_path],
-            tool_dir, timeout,
+            tool_dir, timeout, show_output,
         )
         if run_to:
             result, extra = "timeout", {}
@@ -115,6 +146,7 @@ def run_instance(tool_dir, version, category, values, timeout):
             result, extra = _read_tool_result(res_path)
             if not result:
                 result = "unknown" if run_rc == 0 else "error"
+        log_info(f"run_instance.sh -> {result} in {run_elapsed:.2f}s")
         return {"prepare_time": round(prep_elapsed, 4), "result": result,
                 "time": round(run_elapsed, 4), "extra": extra}
     finally:
@@ -138,11 +170,14 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category
     header, rows = _read_instances(os.path.join(repo_dir, "instances.csv"))
     target = [r for r in rows if r.get(BENCHMARK_COLUMN) == benchmark_name]
 
+    log_stage(f"Start — running {benchmark_name} ({len(target)} instance(s))")
     extra_cols = []
     results = []
-    for r in target:
+    for idx, r in enumerate(target, 1):
+        log_stage(f"Running instance {idx}/{len(target)}: {r.get(INSTANCE_COLUMN, '')}")
         values = [r[c] for c in header]
-        out = run_instance(tool_dir, version, category, values, _parse_timeout(r.get(TIMEOUT_COLUMN)))
+        out = run_instance(tool_dir, version, category, values,
+                           _parse_timeout(r.get(TIMEOUT_COLUMN)), show_output=True)
         for k in out["extra"]:
             if k not in extra_cols:
                 extra_cols.append(k)
@@ -158,6 +193,7 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category
                 + [out["extra"].get(c, "") for c in extra_cols]
                 + [out["prepare_time"], out["result"], out["time"]]
             )
+    log_stage(f"End — finished {len(target)} instance(s); wrote {os.path.basename(out_csv)}")
     return out_csv
 
 
