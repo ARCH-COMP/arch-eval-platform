@@ -1,6 +1,6 @@
 # arch-comp
 
-The **ARCH-COMP** variant of [comp-eval-platform](../comp-eval-platform): the `arch_comp` plugin
+The **ARCH-COMP** variant of [comp-eval-platform](https://github.com/TUMcps/core-eval-platform): the `arch_comp` plugin
 app plus its deploy config, depending on the core engine. An ARCH tool defines a Docker base
 image; the engine clones the tool in, installs it, then runs each benchmark category's instances.
 All the heavy lifting lives in core; this repo is the ARCH-specific seams, category specs, step
@@ -18,8 +18,8 @@ Clone this repo and the core engine **side by side** under the same parent direc
 file mounts `../comp-eval-platform`):
 
 ```bash
-git clone <core-repo>   comp-eval-platform
-git clone <this-repo>   arch-comp-new
+git clone https://github.com/TUMcps/core-eval-platform.git   comp-eval-platform
+git clone https://github.com/ARCH-COMP/arch-eval-platform.git   arch-comp-new
 cd arch-comp-new && docker compose up --build
 ```
 
