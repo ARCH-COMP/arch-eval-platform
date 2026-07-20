@@ -14,14 +14,15 @@ handlers, and node scripts.
 
 ## Getting started
 
-Clone this repo and the core engine **side by side** under the same parent directory (the compose
-file mounts `../comp-eval-platform`):
+The core engine is vendored as a git submodule at [`./core`](https://github.com/TUMcps/core-eval-platform),
+pinned to a specific commit — one recursive clone brings everything:
 
 ```bash
-git clone https://github.com/TUMcps/core-eval-platform.git   comp-eval-platform
-git clone https://github.com/ARCH-COMP/arch-eval-platform.git   arch-comp-new
-cd arch-comp-new && docker compose up --build
+git clone --recurse-submodules https://github.com/ARCH-COMP/arch-eval-platform.git
+cd arch-eval-platform && docker compose up --build
 ```
+
+(Already have a checkout without `./core`? Run `git submodule update --init`.)
 
 - Frontend: <http://localhost:5174>  (one above the VNN stack, so both run side by side)
 - Public URL (optional): `docker compose logs cloudflared | grep trycloudflare`
@@ -29,9 +30,20 @@ cd arch-comp-new && docker compose up --build
 The backend installs core + this plugin, migrates, seeds settings, and serves. The **first
 account you sign up becomes the admin**; later signups start disabled until an admin enables them.
 
+### Updating the pinned core
+
+`./core` is held at one commit for reproducible dev and deploy. Move the pin with the helper,
+then commit the change:
+
+```bash
+core/scripts/bump-core.sh          # latest core main
+core/scripts/bump-core.sh dev      # ...or a branch, tag, or commit
+git commit -m "chore: bump core"   # records the new pin
+```
+
 ## Tests
 
 ```bash
-docker run --rm -v "../comp-eval-platform:/core" -v "$PWD:/arch" -w /arch python:3.11-slim \
+docker run --rm -v "$PWD/core:/core" -v "$PWD:/arch" -w /arch python:3.11-slim \
   sh -c "pip install -q -e '/core[dev]' -e /arch && pytest"
 ```

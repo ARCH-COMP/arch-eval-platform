@@ -21,4 +21,4 @@ dev = ["comp-eval-platform[dev]"]
 [tool.hatch.build.targets.wheel]
 packages = ["arch_comp"]
 
-# Local dev: pip install -e ../comp-eval-platform -e .
+# Local dev: pip install -e ./core -e .   (core is the ./core git submodule)
