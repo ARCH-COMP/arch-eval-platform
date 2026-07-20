@@ -133,10 +133,16 @@ class ArchCompetition(Competition):
             submission_fields=[{"name": "base_image", "type": "text"}],
             score_columns=["tool", "category", "solved", "time"],
             branding=Branding(
-                primary_color="#a4161a",  # dark red (white text 7.75:1); logo field matches
-                hero_image="/api/competition/assets/logo.png",
-                hero_max_width=312,  # 60% of the shell's default; the logo is square, not a banner
-                favicon="/api/competition/assets/logo.png",
+                # Gradient's leading color, so all primary accents match the navbar.
+                primary_color="#2563eb",
+                # Blue -> turquoise navbar gradient (teal end kept deep enough for
+                # legible white nav text).
+                navbar_gradient="linear-gradient(135deg, #2563eb 0%, #0d9488 100%)",
+                # Reachable-set figure (5-dim linear example) whose sets are filled
+                # with the navbar's blue->turquoise gradient; square, no axis/legend.
+                hero_image="/api/competition/assets/hero.svg",
+                hero_max_width=312,  # ~90% of VNN's rendered hero height (the tight-cropped plot has no padding of its own)
+                favicon="/api/competition/assets/favicon.png",  # the gradient swirl on VNN's grey
             ),
             landing=Landing(
                 tagline="ARCH-COMP is a friendly competition for verifying continuous and hybrid "
