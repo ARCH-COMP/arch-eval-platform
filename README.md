@@ -1,4 +1,4 @@
-# arch-comp
+# ARCH-COMP
 
 The **ARCH-COMP** variant of [comp-eval-platform](https://github.com/TUMcps/core-eval-platform): the `arch_comp` plugin
 app plus its deploy config, depending on the core engine. An ARCH tool defines a Docker base
