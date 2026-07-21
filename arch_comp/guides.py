@@ -109,11 +109,10 @@ def toolkit_guide() -> Guide:
                 "heading": "Reporting Results",
                 "blocks": [
                     {"type": "text", "text":
-                        "`run_instance.sh` writes its verdict into the result file it is handed (its "
-                        "last argument): a header row plus one data row, containing at least a "
-                        "`result` column (`verified`, `falsified`, `unknown`, or `error`). A "
-                        "category may read extra self-reported columns: AINNCS reads the CORA "
-                        "timing breakdown."},
+                        "`run_instance.sh` just writes its result into the result file it is handed "
+                        "(its last argument) — a `result` column whose value is `verified`, "
+                        "`falsified`, `unknown`, or `error`, as in the example below. A category may "
+                        "read extra self-reported columns: AINNCS reads the CORA timing breakdown."},
                     {"type": "code", "code": _RESULTS_FILE},
                 ],
             },
