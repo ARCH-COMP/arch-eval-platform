@@ -142,7 +142,7 @@ class ArchCompetition(Competition):
                 # navbar's blue->turquoise gradient (matches arch-comp.github.io).
                 hero_image="/api/competition/assets/logo.svg",
                 hero_max_width=360,  # wide 3:1 wordmark, sized for presence on the landing hero
-                favicon="/api/competition/assets/favicon.png",  # ARCH logo centered on VNN-style light grey (#fafafa)
+                favicon="/api/competition/assets/favicon.png",  # ARCH lettermark tile (blue->teal), same favicon as arch-comp.github.io
             ),
             landing=Landing(
                 tagline="ARCH-COMP is a friendly competition for verifying continuous and hybrid "
