@@ -138,11 +138,11 @@ class ArchCompetition(Competition):
                 # Blue -> turquoise navbar gradient (teal end kept deep enough for
                 # legible white nav text).
                 navbar_gradient="linear-gradient(135deg, #2563eb 0%, #0d9488 100%)",
-                # Reachable-set figure (5-dim linear example) whose sets are filled
-                # with the navbar's blue->turquoise gradient; square, no axis/legend.
-                hero_image="/api/competition/assets/hero.svg",
-                hero_max_width=312,  # ~90% of VNN's rendered hero height (the tight-cropped plot has no padding of its own)
-                favicon="/api/competition/assets/favicon.png",  # the gradient swirl on VNN's grey
+                # The ARCH wordmark logo: slate letters with the arch recolored to the
+                # navbar's blue->turquoise gradient (matches arch-comp.github.io).
+                hero_image="/api/competition/assets/logo.svg",
+                hero_max_width=360,  # wide 3:1 wordmark, sized for presence on the landing hero
+                favicon="/api/competition/assets/logo.svg",
             ),
             landing=Landing(
                 tagline="ARCH-COMP is a friendly competition for verifying continuous and hybrid "
