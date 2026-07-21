@@ -148,14 +148,14 @@ class ArchCompetition(Competition):
                 tagline="ARCH-COMP is a friendly competition for verifying continuous and hybrid "
                         "systems across categories, including systems controlled by neural networks.",
                 links=[
-                    {"label": "Main Website", "url": "https://cps-vo.org/group/ARCH/FriendlyCompetition"},
+                    {"label": "Main Website", "url": "https://arch-comp.github.io/"},
                     {"label": "GitHub", "url": "https://github.com/ARCH-COMP"},
                 ],
                 contacts=["nico.holzinger@tum.de", "tobias.ladner@tum.de"],
                 related={
                     "text": "Interested in verifying standalone neural networks? Check out VNN-COMP!",
                     "label": "Visit VNN-COMP",
-                    "url": "https://vnn.repeatability.cps.cit.tum.de",
+                    "url": "https://vnn-comp.github.io/",
                 },
             ),
             guides={"toolkit": toolkit_guide(), "benchmark": benchmark_guide()},
