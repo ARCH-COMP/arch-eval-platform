@@ -63,8 +63,8 @@ def toolkit_guide() -> Guide:
                     "One step per selected benchmark, so a benchmark that fails does not take the "
                     "others with it. For each instance the worker runs `prepare_instance.sh v1 "
                     "<category> <benchmark> <instance>` and then `run_instance.sh v1 <category> "
-                    "<benchmark> <instance> <out>` — every column of the instance's `instances.csv` "
-                    "row, in file order, with the results file appended.",
+                    "<benchmark> <instance> <result-file>` — every column of the instance's "
+                    "`instances.csv` row, in file order, with the results file appended.",
                     "The harness owns timing: it measures wall-clock time and enforces the "
                     "per-instance timeout (the `timeout` column in `instances.csv`, if the category "
                     "sets one; otherwise the run is uncapped). A nonzero exit from "
@@ -99,28 +99,22 @@ def toolkit_guide() -> Guide:
                         "v1 <category> <benchmark> <instance>` (plus any further `instances.csv` "
                         "columns, in order). A nonzero exit skips the instance.",
                         "`run_instance.sh` — runs one instance as `run_instance.sh v1 <category> "
-                        "<benchmark> <instance> <out>` (further columns before `<out>`, which is "
-                        "always the last argument) and writes its verdict to `<out>`.",
+                        "<benchmark> <instance> <result-file>` (further columns before "
+                        "`<result-file>`, which is always the last argument) and writes its verdict "
+                        "to `<result-file>`.",
                     ]},
-                    {"type": "note", "text":
-                        "The interface version is the first argument and the category the second, so "
-                        "one repository can serve several categories, and the harness — not your "
-                        "script — measures the time and enforces the timeout."},
                 ],
             },
             {
                 "heading": "Reporting Results",
                 "blocks": [
                     {"type": "text", "text":
-                        "`run_instance.sh` writes its results file as a header row plus one data "
-                        "row. It must contain a `result` column (`verified`, `falsified`, "
-                        "`unknown`, or `error`). A category may read extra self-reported columns: "
-                        "AINNCS reads the CORA timing breakdown."},
+                        "`run_instance.sh` writes its verdict into the result file it is handed (its "
+                        "last argument): a header row plus one data row, containing at least a "
+                        "`result` column (`verified`, `falsified`, `unknown`, or `error`). A "
+                        "category may read extra self-reported columns: AINNCS reads the CORA "
+                        "timing breakdown."},
                     {"type": "code", "code": _RESULTS_FILE},
-                    {"type": "note", "text":
-                        "The canonical `time` on the scoreboard is the harness wall-clock, not a "
-                        "self-reported number; the breakdown is recorded alongside it as extra "
-                        "columns."},
                 ],
             },
             {
