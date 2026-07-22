@@ -23,6 +23,11 @@ cd arch-eval-platform && docker compose up --build
 The **first account you sign up becomes the admin**; later signups start disabled until an admin
 enables them.
 
+To try a submission, start from the examples:
+
+- Benchmark: <https://github.com/ARCH-COMP/example_benchmark>
+- Tool: <https://github.com/ARCH-COMP/example_toolkit>
+
 ## Contributing
 
 Developing the platform (tests, updating the core engine, architecture) is covered in
