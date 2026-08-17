@@ -164,11 +164,13 @@ def _read_tool_result(path):
     return result, extra
 
 
-def run_instance(tool_dir, version, category, values, timeout, show_output=False):
-    """Run one instance: prepare (capped at ``PREPARE_CAP_SECONDS``) then run (capped at
-    ``timeout``). The tool scripts are called as ``<version> <category> <col1..colN>``
-    (the instances.csv columns in file order — ``benchmark``, ``instance``, …), with the
-    results file appended for the run. Returns ``{prepare_time, result, time, extra}``."""
+def run_instance(tool_dir, version, category, values, timeout, show_output=False, figures_dir=None):
+    """Run one instance: prepare then run. If figures_dir is given, it is created and
+    passed as the last argument to run_instance.sh so tools can save plots there.
+    The harness-measured time covers the full run_instance.sh wall-clock (verdict +
+    any visualisation). Tools that want to report their verdict time separately can
+    write a verdict_time column to their results CSV; the harness picks it up as an
+    extra column automatically."""
     log_box_open(f"run prepare_instance.sh (timeout {PREPARE_CAP_SECONDS}s)")
     prep_elapsed, prep_to, prep_rc = _timed_run(
         [os.path.join(tool_dir, "prepare_instance.sh"), version, category, *values],
@@ -178,7 +180,6 @@ def run_instance(tool_dir, version, category, values, timeout, show_output=False
         why = "timeout" if prep_to else f"rc={prep_rc}"
         log_box_note(f"prepare_instance.sh failed ({why}) in {prep_elapsed:.2f}s; skipping instance")
         log_box_close()
-        # A failed prepare skips the instance (rule-compliant: it scores as unsolved).
         return {"prepare_time": round(prep_elapsed, 4), "result": "prepare_failed",
                 "time": 0.0, "extra": {}}
     log_box_note(f"prepare_instance.sh done in {prep_elapsed:.2f}s")
@@ -189,9 +190,13 @@ def run_instance(tool_dir, version, category, values, timeout, show_output=False
     try:
         cap = "no cap" if timeout is None else f"timeout {timeout:g}s"
         log_box_open(f"run run_instance.sh ({cap})")
+        # Build the command: append figures_dir after res_path if provided
+        if figures_dir:
+            os.makedirs(figures_dir, exist_ok=True)
+            os.environ["FIGURES_DIR"] = figures_dir
+        run_cmd = [os.path.join(tool_dir, "run_instance.sh"), version, category, *values, res_path]
         run_elapsed, run_to, run_rc = _timed_run(
-            [os.path.join(tool_dir, "run_instance.sh"), version, category, *values, res_path],
-            tool_dir, timeout, show_output,
+            run_cmd, tool_dir, timeout, show_output,
         )
         if run_to:
             result, extra = "timeout", {}
@@ -253,8 +258,11 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category
     for idx, r in enumerate(target, 1):
         log_stage(f"Running instance {idx}/{len(target)}: {r.get(INSTANCE_COLUMN, '')}")
         values = [r[c] for c in header]
+        instance_name = r.get(INSTANCE_COLUMN, str(idx)).replace("/", "_").replace(" ", "_")
+        figures_dir = os.path.join(os.path.dirname(out_csv), "figures", benchmark_name, instance_name)
         out = run_instance(tool_dir, version, category, values,
-                           _parse_timeout(r.get(TIMEOUT_COLUMN)), show_output=True)
+                        _parse_timeout(r.get(TIMEOUT_COLUMN)), show_output=True,
+                        figures_dir=figures_dir)
         for k in out["extra"]:
             if k not in extra_cols:
                 extra_cols.append(k)
