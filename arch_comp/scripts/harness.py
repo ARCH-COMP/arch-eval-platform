@@ -191,10 +191,8 @@ def run_instance(tool_dir, version, category, values, timeout, show_output=False
         cap = "no cap" if timeout is None else f"timeout {timeout:g}s"
         log_box_open(f"run run_instance.sh ({cap})")
         # Build the command: append figures_dir after res_path if provided
-        if figures_dir:
-            os.makedirs(figures_dir, exist_ok=True)
-            os.environ["FIGURES_DIR"] = figures_dir
-        run_cmd = [os.path.join(tool_dir, "run_instance.sh"), version, category, *values, res_path]
+        os.makedirs(figures_dir, exist_ok=True)
+        run_cmd = [os.path.join(tool_dir, "run_instance.sh"), version, category, *values, res_path, figures_dir]
         run_elapsed, run_to, run_rc = _timed_run(
             run_cmd, tool_dir, timeout, show_output,
         )
@@ -290,8 +288,8 @@ def main(argv):
     if len(argv) >= 8 and argv[1] == "benchmark":
         run_benchmark(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7])
         return 0
-    if len(argv) >= 7 and argv[1] == "instance":
-        out = run_instance(argv[2], argv[3], argv[4], argv[6:], _parse_timeout(argv[5]))
+    if len(argv) >= 8 and argv[1] == "instance":
+        out = run_instance(argv[2], argv[3], argv[4], argv[7:], _parse_timeout(argv[5]), figures_dir=argv[6], show_output=True)
         print(json.dumps(out))
         return 0
     sys.stderr.write(
