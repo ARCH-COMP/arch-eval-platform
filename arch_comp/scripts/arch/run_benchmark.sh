@@ -1,21 +1,68 @@
-#!/bin/sh
+#!/bin/bash
 # Run one benchmark's instances with the installed tool, then report back.
-#
-# Ships the node-side harness (harness.py) and clones the category's benchmarks repo on
-# the node (once — it holds instances.csv + the benchmark data). The harness loops the
-# benchmark's instances, running the tool's prepare_instance.sh / run_instance.sh per the
-# ARCH contract and timing each, and writes results_<benchmark_id>.csv, which the step
-# reads back. $BENCHMARKS_DIR points the tool at the benchmark data. Node files are keyed
-# by benchmark id because benchmark names may contain spaces. The remote script POSTs the
-# log tail to ${ROOT_URL}/update/${task_id}/success|failure.
-#
-# Params (env, from the step handler): benchmark_ip task_id benchmark_id benchmark_name
-# category version script_dir repository hash. ROOT_URL comes from the backend
-# environment. NODE_SSH_KEY locates the node key.
+# (Now supports both AWS remote execution and Local Docker execution)
+
 set -eu
 
-ssh_key="${NODE_SSH_KEY:-$HOME/.ssh/vnncomp.pem}"
 script_here="$(dirname "$0")"
+
+# ---------------------------------------------------------
+# LOCAL EXECUTION MODE (If local IP is detected)
+# ---------------------------------------------------------
+if [ "$benchmark_ip" = "127.0.0.1" ] || [ "$benchmark_ip" = "localhost" ]; then
+    local_script_path="/tmp/run_benchmark_${benchmark_id}.sh"
+    local_log_path="/app/logs/run_${benchmark_id}.log"
+    mkdir -p /app/logs
+
+    cat > "${local_script_path}" <<LOCAL_SCRIPT
+#!/bin/bash
+export COMP_LABEL="${COMP_LABEL:-ARCH-COMP}"
+. "${COMP_LOG_LIB}"
+cd /app || exit 1
+exec > >(tee ${local_log_path}) 2>&1
+
+# Since tmux is not available, we write the process ID so the Python side can abort it if necessary
+echo \$\$ > /app/run_${benchmark_id}.pgid
+log_superstage 'Start — running ${benchmark_name}'
+
+report() {  
+    # success|failure — POST the log tail so the error survives node teardown
+    tail -c 200000 ${local_log_path} > /tmp/run_${benchmark_id}.tail 2>/dev/null || true
+    curl --retry 100 --retry-connrefused --max-time 120 --data-binary @/tmp/run_${benchmark_id}.tail ${ROOT_URL}/update/${task_id}/\$1 || true
+    return 0
+}
+
+# We skip git clone commands because the directory is already mounted via volume
+export BENCHMARKS_DIR=/app/benchmarks_repo
+results_file=/app/logs/results_${benchmark_id}.csv
+
+# Start the Python harness script (test executor)
+if python3 "${script_here}/../harness.py" benchmark \
+    /app/benchmarks_repo "${benchmark_name}" \
+    /app/tool/${script_dir} \
+    \${results_file} \
+    "${version}" "${category}"; then
+    
+    lines=\$(wc -l < \${results_file} 2>/dev/null || echo 1)
+    count=\$(( lines > 0 ? lines - 1 : 0 ))
+    log_superstage "End — finished \${count} instance(s); results in \${results_file}"
+    report success
+else
+    log_superstage 'End — benchmark run FAILED'
+    report failure
+fi
+LOCAL_SCRIPT
+
+    chmod +x "${local_script_path}"
+    # Instead of tmux new-session, we run the command in the background and leave it
+    nohup /bin/bash "${local_script_path}" >/dev/null 2>&1 &
+    exit 0
+fi
+
+# ---------------------------------------------------------
+# AWS / REMOTE EXECUTION MODE (Original Code)
+# ---------------------------------------------------------
+ssh_key="${NODE_SSH_KEY:-$HOME/.ssh/vnncomp.pem}"
 node="ubuntu@${benchmark_ip}"
 ssh_opts="-o StrictHostKeyChecking=accept-new -i ${ssh_key}"
 remote_script_path="/home/ubuntu/run_benchmark_${benchmark_id}.sh"
