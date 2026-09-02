@@ -38,11 +38,11 @@ def _run_benchmark(repo, name, tool, out, version="v1", category="AINNCS"):
 
 
 # A tool that self-reports a verdict + a CORA-style breakdown to its results file
-# (the last argument), like AINNCS.
+# (the second to last argument now), like AINNCS.
 VERIFYING_TOOL = (
     "#!/bin/sh\n"
-    'for a in "$@"; do last="$a"; done\n'
-    'printf "result,time_verification\\nverified,0.42\\n" > "$last"\n'
+    'for a in "$@"; do csv_file="$last"; last="$a"; done\n'
+    'printf "result,time_verification\\nverified,0.42\\n" > "$csv_file"\n'
 )
 
 
@@ -62,12 +62,12 @@ def test_records_result_and_harness_wall_clock(tmp_path):
 
 
 # A tool that echoes the arguments it received back into the results file, to check the
-# harness passes them as <version> <category> <benchmark> <instance> ... <results_file>.
+# harness passes them as <version> <category> <benchmark> <instance> ... <results_file> <figures_dir>.
 ECHO_TOOL = (
     "#!/bin/sh\n"
-    'for a in "$@"; do last="$a"; done\n'
-    'printf "result,seen_version,seen_category,seen_benchmark,seen_instance\\n" > "$last"\n'
-    'printf "unknown,%s,%s,%s,%s\\n" "$1" "$2" "$3" "$4" >> "$last"\n'
+    'for a in "$@"; do csv_file="$last"; last="$a"; done\n'
+    'printf "result,seen_version,seen_category,seen_benchmark,seen_instance\\n" > "$csv_file"\n'
+    'printf "unknown,%s,%s,%s,%s\\n" "$1" "$2" "$3" "$4" >> "$csv_file"\n'
 )
 
 
@@ -85,9 +85,9 @@ def test_forwards_version_category_then_columns(tmp_path):
 def test_optional_timeout_column_caps_the_run(tmp_path):
     slow_tool = (
         "#!/bin/sh\n"
-        'for a in "$@"; do last="$a"; done\n'
+        'for a in "$@"; do csv_file="$last"; last="$a"; done\n'
         'sleep 2\n'
-        'printf "result\\nverified\\n" > "$last"\n'
+        'printf "result\\nverified\\n" > "$csv_file"\n'
     )
     repo = _repo(tmp_path / "repo", "benchmark,instance,timeout\nACC,slow,0.5\n")
     tool = _tool(tmp_path / "tool", slow_tool)
