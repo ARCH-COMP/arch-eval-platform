@@ -41,6 +41,9 @@ class ArchInstallHandler(StepHandler):
 
     def execute(self):
         ip = _node_ip(self.task)
+        if ip in ("127.0.0.1", "localhost"):
+            self.task.step_succeeded(check_status=False)
+            return
         if ip is None:
             self.task.step_failed(check_status=False)
             return
@@ -73,6 +76,10 @@ class ArchLoadHandler(StepHandler):
 
     def execute(self):
         ip = _node_ip(self.task)
+        if ip in ("127.0.0.1", "localhost"):
+            self.task.step_succeeded(check_status=False)
+            return
+            
         if ip is None:
             self.task.step_failed(check_status=False)
             return
@@ -82,7 +89,6 @@ class ArchLoadHandler(StepHandler):
             "repository": self.step.payload.get("repository", ""),
             "hash": self.step.payload.get("hash", ""),
         })
-
     def retry_until_success(self) -> bool:
         return True  # clones are flaky (network); retry rather than fail the task
 
@@ -99,17 +105,23 @@ class ArchLoadHandler(StepHandler):
         category = Category.objects.filter(id=self.step.payload.get("category_id")).first()
         if ip is None or category is None:
             return
-        csv_text = node_exec(ip, f"cat {CLONE_DIR}/{INSTANCES_FILE} 2>/dev/null")
+            
+        if ip in ("127.0.0.1", "localhost"):
+            csv_text = node_exec(ip, f"cat /app/benchmarks_repo/{INSTANCES_FILE} 2>/dev/null")
+            sha = node_exec(ip, f"git -C /app/benchmarks_repo rev-parse HEAD 2>/dev/null").strip()
+        else:
+            csv_text = node_exec(ip, f"cat {CLONE_DIR}/{INSTANCES_FILE} 2>/dev/null")
+            sha = node_exec(ip, f"git -C {CLONE_DIR} rev-parse HEAD 2>/dev/null").strip()
+            
         if not csv_text.strip():
             self._append_log(f"no {INSTANCES_FILE} found on the node; nothing loaded")
             return
-        sha = node_exec(ip, f"git -C {CLONE_DIR} rev-parse HEAD 2>/dev/null").strip()
+                    
         benchmarks = load_benchmarks_from_csv(
             category=category, repository=self.step.payload.get("repository", ""),
             ref=sha or self.step.payload.get("hash", ""), owner=self.task.owner, csv_text=csv_text,
         )
         self._append_log(f"loaded {len(benchmarks)} benchmark(s) for category {category.name}")
-
     def _append_log(self, line: str):
         self.step.set_log(((self.step.logs or "") + f"\n[load] {line}").strip())
 
@@ -162,25 +174,26 @@ class ArchRunBenchmarkHandler(StepHandler):
         super().while_active()
         b = self._benchmark()
         if b is not None:
-            self.refresh_run_progress(f"/home/ubuntu/logs/results_{b.id}.csv", b, has_header=True)
-
+            ip = _node_ip(self.task)
+            base_dir = "/app" if ip in ("127.0.0.1", "localhost") else "/home/ubuntu"
+            self.refresh_run_progress(f"{base_dir}/logs/results_{b.id}.csv", b, has_header=True)
     def can_abort_benchmark(self) -> bool:
         return True
 
     def _kill_run(self):
-        """Stop the node-side run tree. run_benchmark.sh records the tmux pane's process
-        group; a SIGTERM to it brings down the pane and the harness, and harness.py's own
-        handler reaps the instance it was running (a detached group of its own), so nothing
-        keeps burning CPU while the next benchmark runs — matching VNN's group-kill."""
+        """Stop the node-side run tree."""
         from comp_eval_platform.compute.shell import node_exec
 
         ip = _node_ip(self.task)
         b = self._benchmark()
         if ip is None or b is None:
             return
-        node_exec(ip, f"kill -TERM -- -$(cat /home/ubuntu/run_{b.id}.pgid) 2>/dev/null; "
-                      f"tmux kill-session -t run_{b.id} 2>/dev/null; true")
-
+            
+        if ip in ("127.0.0.1", "localhost"):
+            node_exec(ip, f"pkill -f run_{b.id} 2>/dev/null; true")
+        else:
+            node_exec(ip, f"kill -TERM -- -$(cat /home/ubuntu/run_{b.id}.pgid) 2>/dev/null; "
+                          f"tmux kill-session -t run_{b.id} 2>/dev/null; true")
     def abort_benchmark(self):
         """Stop this benchmark and move on to the next, recording it as aborted (its
         partial results are finalized first)."""
@@ -197,8 +210,12 @@ class ArchRunBenchmarkHandler(StepHandler):
         b = self._benchmark()
         if b is None:
             return
+            
+        ip = _node_ip(self.task)
+        base_dir = "/app" if ip in ("127.0.0.1", "localhost") else "/home/ubuntu"
+        
         # Result collection (fetch results.csv → temp dir) is generic core behavior.
-        artifacts = self.collect_results(f"/home/ubuntu/logs/results_{b.id}.csv")
+        artifacts = self.collect_results(f"{base_dir}/logs/results_{b.id}.csv")
         if artifacts is None:
             return
         try:
@@ -208,7 +225,6 @@ class ArchRunBenchmarkHandler(StepHandler):
             self._freeze_summary(records)
         finally:
             shutil.rmtree(artifacts, ignore_errors=True)
-
     def _freeze_summary(self, records):
         """Tally the run's verdicts onto the step so the details page shows a green
         stats overview (there is no ARCH counterexample validator yet)."""
