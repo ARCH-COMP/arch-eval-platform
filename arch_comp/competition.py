@@ -22,6 +22,9 @@ class ArchCompetition(Competition):
     name = "arch"
     display_name = "ARCH-COMP"
 
+    def benchmark_groups(self) -> tuple[str, ...]:
+        return ("default",)
+
     # (1) Submission spec + validation ------------------------------------
     def validate_submission(self, submission) -> None:
         from comp_eval_platform.core.models import Tool
@@ -80,8 +83,11 @@ class ArchCompetition(Competition):
             selected = task.tool.extra.get("benchmarks")
             if selected:
                 benchmarks = benchmarks.filter(id__in=selected)
-            for b in benchmarks.order_by("name"):
-                steps.append(add(kinds.RUN_BENCHMARK, benchmark_id=str(b.id)))
+            for b in self.order_benchmarks(benchmarks):
+                steps.append(add(
+                    kinds.RUN_BENCHMARK, benchmark_id=str(b.id),
+                    benchmark_name=b.name, benchmark_group=b.group,
+                ))
             steps.append(add(SHUTDOWN_KIND))
         else:
             # A benchmark submission loads a whole category from one central repo. The
