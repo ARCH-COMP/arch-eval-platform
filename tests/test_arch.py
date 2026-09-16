@@ -16,6 +16,7 @@ def test_active_competition_is_arch():
     from comp_eval_platform.competitions import get_competition
 
     assert get_competition().name == "arch"
+    assert get_competition().benchmark_groups() == ("default",)
 
 
 def test_validate_tool_requires_base_image():

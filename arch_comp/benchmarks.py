@@ -83,7 +83,7 @@ def load_benchmarks_from_csv(*, category, repository, ref, owner, csv_text):
             category=category, name=name,
             defaults={
                 "owner": owner, "repository": repository, "hash": ref,
-                "published": True, "extra": {"columns": header},
+                "group": "default", "published": True, "extra": {"columns": header},
             },
         )
         benchmark.instances.all().delete()
