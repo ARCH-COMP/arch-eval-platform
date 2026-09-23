@@ -93,6 +93,66 @@ def test_load_from_csv_creates_benchmarks_and_ordered_instances():
     assert [insts[0].spec[c] for c in tora.extra["columns"]] == ["TORA", "remain"]
 
 
+def test_group_column_assigns_benchmark_and_is_reserved_metadata(monkeypatch):
+    from arch_comp.categories import ensure_categories
+    from arch_comp.benchmarks import load_benchmarks_from_csv
+    from comp_eval_platform.competitions import get_competition
+    from comp_eval_platform.core.models import Instance
+
+    monkeypatch.setattr(
+        type(get_competition()), "benchmark_groups", lambda self: ("default", "regular")
+    )
+    cat = ensure_categories()["AINNCS"]
+    (bench,) = load_benchmarks_from_csv(
+        category=cat, repository="r", ref="h", owner=_user(),
+        csv_text=(
+            "benchmark,instance,group,input\n"
+            "ACC,a,regular,model-a\n"
+            "ACC,b,regular,model-b\n"
+        ),
+    )
+
+    assert bench.group == "regular"
+    assert bench.extra["columns"] == ["benchmark", "instance", "input"]
+    assert list(Instance.objects.filter(benchmark=bench).values_list("spec", flat=True)) == [
+        {"benchmark": "ACC", "instance": "a", "input": "model-a"},
+        {"benchmark": "ACC", "instance": "b", "input": "model-b"},
+    ]
+
+
+def test_group_column_defaults_and_validates_consistency():
+    from arch_comp.categories import ensure_categories
+    from arch_comp.benchmarks import load_benchmarks_from_csv
+
+    cat = ensure_categories()["AINNCS"]
+    (bench,) = load_benchmarks_from_csv(
+        category=cat, repository="r", ref="h", owner=_user(),
+        csv_text="benchmark,instance,group\nACC,a,\n",
+    )
+    assert bench.group == "default"
+
+    with pytest.raises(ValidationError, match="inconsistent groups"):
+        load_benchmarks_from_csv(
+            category=cat, repository="r", ref="h2", owner=_user(),
+            csv_text=(
+                "benchmark,instance,group\n"
+                "ACC,a,default\n"
+                "ACC,b,regular\n"
+            ),
+        )
+
+
+def test_group_column_rejects_unconfigured_group():
+    from arch_comp.categories import ensure_categories
+    from arch_comp.benchmarks import load_benchmarks_from_csv
+
+    with pytest.raises(ValidationError, match="Unknown benchmark group"):
+        load_benchmarks_from_csv(
+            category=ensure_categories()["AINNCS"], repository="r", ref="h", owner=_user(),
+            csv_text="benchmark,instance,group\nACC,a,regular\n",
+        )
+
+
 def test_timeout_column_is_optional():
     from arch_comp.categories import ensure_categories
     from arch_comp.benchmarks import load_benchmarks_from_csv

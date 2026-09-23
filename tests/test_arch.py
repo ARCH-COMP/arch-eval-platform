@@ -295,3 +295,16 @@ def test_guides_link_the_github_skeleton_repos():
     prose = repr(get_competition().presentation().guides)
     assert "https://github.com/ARCH-COMP/example_toolkit" in prose
     assert "https://github.com/ARCH-COMP/example_benchmark" in prose
+
+
+def test_guides_document_group_as_reserved_benchmark_metadata():
+    from comp_eval_platform.competitions import get_competition
+
+    guides = get_competition().presentation().guides
+    benchmark_prose = repr(guides["benchmark"])
+    toolkit_prose = repr(guides["toolkit"])
+
+    assert "benchmark,instance,group" in benchmark_prose
+    assert "Missing or blank values use `default`" in benchmark_prose
+    assert "metadata and is not passed to tools" in benchmark_prose
+    assert "reserved `group` metadata column is not passed" in toolkit_prose

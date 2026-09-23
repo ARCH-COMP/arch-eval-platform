@@ -11,10 +11,11 @@ one ``results.csv`` row:
     benchmark, instance, <tool-reported extra columns...>, prepare_time, result, time
 
 where ``time`` is the harness wall-clock (canonical) and the tool's extras (e.g. the
-AINNCS CORA breakdown ``time_*``) ride along as columns. All instances.csv columns are
-passed, in file order, to ``prepare_instance.sh``/``run_instance.sh`` (tools ignore the
-ones they don't need). A ``timeout`` column caps that instance; absent/blank/``inf`` =
-no cap.
+AINNCS CORA breakdown ``time_*``) ride along as columns. All execution columns in
+instances.csv are passed, in file order, to ``prepare_instance.sh``/``run_instance.sh``
+(tools ignore the ones they don't need). The reserved ``group`` column is benchmark
+metadata and is not passed. A ``timeout`` column caps that instance;
+absent/blank/``inf`` = no cap.
 """
 import csv
 import json
@@ -65,6 +66,7 @@ def log_box_close():
 BENCHMARK_COLUMN = "benchmark"
 INSTANCE_COLUMN = "instance"
 TIMEOUT_COLUMN = "timeout"
+GROUP_COLUMN = "group"
 RESULT_COLUMN = "result"
 NO_CAP = {"", "inf", "infinity", "none", "-1"}
 
@@ -255,7 +257,7 @@ def run_benchmark(repo_dir, benchmark_name, tool_dir, out_csv, version, category
     _write_results(out_csv, extra_cols, results)  # header up front, so 0/N reads live
     for idx, r in enumerate(target, 1):
         log_stage(f"Running instance {idx}/{len(target)}: {r.get(INSTANCE_COLUMN, '')}")
-        values = [r[c] for c in header]
+        values = [r[c] for c in header if c != GROUP_COLUMN]
         instance_name = r.get(INSTANCE_COLUMN, str(idx)).replace("/", "_").replace(" ", "_")
         figures_dir = os.path.join(os.path.dirname(out_csv), "figures", benchmark_name, instance_name)
         out = run_instance(tool_dir, version, category, values,

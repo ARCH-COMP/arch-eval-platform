@@ -7,7 +7,10 @@
 # pip-installed at runtime (see docker-compose.yml).
 FROM python:3.11-slim
 
-ARG DOCKER_CLI_VERSION=24.0.9
+# Docker Engine 29 rejects clients older than API 1.44. Docker CLI 24 only
+# supports API 1.43, so keep the backend-side CLI aligned with the development
+# daemon generation used by the local_docker backend.
+ARG DOCKER_CLI_VERSION=29.0.1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
