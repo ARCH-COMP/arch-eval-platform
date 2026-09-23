@@ -7,11 +7,11 @@ CSV, and fan it out into one ``Benchmark`` per distinct ``benchmark`` value, eac
 owning its rows as ``Instance``s.
 
 Columns beyond ``benchmark``/``instance`` are category-specific and carried through
-verbatim, in file order, to ``prepare_instance.sh``/``run_instance.sh``. Since jsonb
-does not preserve dict key order, the ordered header lives once on
-``Benchmark.extra["columns"]``; per-instance values are addressed by name in
-``Instance.spec``. A ``timeout`` column, if present, caps that instance; absent, the
-instance runs uncapped.
+verbatim, in file order, to ``prepare_instance.sh``/``run_instance.sh``, except for
+the reserved ``group`` benchmark-metadata column. Since jsonb does not preserve dict
+key order, the ordered execution header lives once on ``Benchmark.extra["columns"]``;
+per-instance values are addressed by name in ``Instance.spec``. A ``timeout`` column,
+if present, caps that instance; absent, the instance runs uncapped.
 """
 import csv
 import io
@@ -26,6 +26,8 @@ INSTANCES_FILE = "instances.csv"
 BENCHMARK_COLUMN = "benchmark"
 INSTANCE_COLUMN = "instance"
 TIMEOUT_COLUMN = "timeout"
+GROUP_COLUMN = "group"
+DEFAULT_GROUP = "default"
 
 # Where load_benchmark.sh clones a category's central repo on the worker; the load
 # step reads this path back to fan instances.csv into benchmarks.
@@ -73,23 +75,42 @@ def load_benchmarks_from_csv(*, category, repository, ref, owner, csv_text):
     benchmark no longer present in the CSV is removed, so pointing a category at a new hash
     leaves exactly the CSV's set. Loaded benchmarks are published (selectable at
     tool-submission time)."""
+    from comp_eval_platform.competitions import get_competition
     from comp_eval_platform.core.models import Benchmark, Instance
 
     header, rows = parse_instances_csv(csv_text)
     groups = group_by_benchmark(rows)
+    execution_header = [column for column in header if column != GROUP_COLUMN]
+    competition = get_competition()
     benchmarks = []
-    for name, group in groups.items():
+    for name, benchmark_rows in groups.items():
+        configured_groups = {
+            row.get(GROUP_COLUMN, "").strip() or DEFAULT_GROUP
+            for row in benchmark_rows
+        }
+        if len(configured_groups) != 1:
+            raise ValidationError(
+                f"{INSTANCES_FILE} benchmark {name!r} has inconsistent groups: "
+                f"{sorted(configured_groups)}."
+            )
+        benchmark_group = competition.validate_benchmark_group(configured_groups.pop())
         benchmark, _ = Benchmark.objects.update_or_create(
             category=category, name=name,
             defaults={
                 "owner": owner, "repository": repository, "hash": ref,
-                "group": "default", "published": True, "extra": {"columns": header},
+                "group": benchmark_group, "published": True,
+                "extra": {"columns": execution_header},
             },
         )
         benchmark.instances.all().delete()
         Instance.objects.bulk_create([
-            Instance(benchmark=benchmark, name=row[INSTANCE_COLUMN], spec=row, order=i)
-            for i, row in enumerate(group)
+            Instance(
+                benchmark=benchmark,
+                name=row[INSTANCE_COLUMN],
+                spec={column: row[column] for column in execution_header},
+                order=i,
+            )
+            for i, row in enumerate(benchmark_rows)
         ])
         benchmarks.append(benchmark)
     # Drop benchmarks the new CSV dropped, so the category mirrors the repo exactly.

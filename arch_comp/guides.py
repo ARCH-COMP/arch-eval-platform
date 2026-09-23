@@ -15,10 +15,10 @@ BENCHMARK_SKELETON = "https://github.com/ARCH-COMP/example_benchmark"
 _RESULTS_FILE = """result,time_random,time_violation,time_reachable,time_verification
 verified,0.10,0.20,0.30,0.60"""
 
-_INSTANCES_CSV = """benchmark,instance
-TORA,reach
-TORA,remain
-VCAS,worst-19.5"""
+_INSTANCES_CSV = """benchmark,instance,group
+TORA,reach,default
+TORA,remain,default
+VCAS,worst-19.5,default"""
 
 
 def toolkit_guide() -> Guide:
@@ -63,8 +63,9 @@ def toolkit_guide() -> Guide:
                     "One step per selected benchmark, so a benchmark that fails does not take the "
                     "others with it. For each instance the worker runs `prepare_instance.sh v1 "
                     "<category> <benchmark> <instance>` and then `run_instance.sh v1 <category> "
-                    "<benchmark> <instance> <result-file>` — every column of the instance's "
-                    "`instances.csv` row, in file order, with the results file appended.",
+                    "<benchmark> <instance> [extra columns...] <result-file> <figures-dir>`. The "
+                    "CSV's execution columns are passed in file order; the reserved `group` "
+                    "metadata column is not passed to either script.",
                     "The harness owns timing: it measures wall-clock time and enforces the "
                     "per-instance timeout (the `timeout` column in `instances.csv`, if the category "
                     "sets one; otherwise the run is uncapped). A nonzero exit from "
@@ -97,11 +98,11 @@ def toolkit_guide() -> Guide:
                         "`install_tool.sh v1`; the argument is the interface version.",
                         "`prepare_instance.sh` — called before each instance as `prepare_instance.sh "
                         "v1 <category> <benchmark> <instance>` (plus any further `instances.csv` "
-                        "columns, in order). A nonzero exit skips the instance.",
+                        "execution columns, in order; `group` is excluded). A nonzero exit skips "
+                        "the instance.",
                         "`run_instance.sh` — runs one instance as `run_instance.sh v1 <category> "
-                        "<benchmark> <instance> <result-file>` (further columns before "
-                        "`<result-file>`, which is always the last argument) and writes its verdict "
-                        "to `<result-file>`.",
+                        "<benchmark> <instance> [extra columns...] <result-file> <figures-dir>` and "
+                        "writes its verdict to the second-to-last argument.",
                     ]},
                 ],
             },
@@ -110,7 +111,8 @@ def toolkit_guide() -> Guide:
                 "blocks": [
                     {"type": "text", "text":
                         "`run_instance.sh` just writes its result into the result file it is handed "
-                        "(its last argument) — a `result` column whose value is `verified`, "
+                        "(its second-to-last argument; the figures directory is last) — a `result` "
+                        "column whose value is `verified`, "
                         "`falsified`, `unknown`, or `error`, as in the example below. A category may "
                         "read extra self-reported columns: AINNCS reads the CORA timing breakdown."},
                     {"type": "code", "code": _RESULTS_FILE},
@@ -158,7 +160,8 @@ def benchmark_guide() -> Guide:
                     "The worker clones the repository at the submitted commit and its "
                     "`instances.csv` is read back — the one file that lists every benchmark and "
                     "instance in the category. The rows are fanned out into one benchmark per "
-                    "distinct `benchmark` value, each owning its instances.",
+                    "distinct `benchmark` value, each owning its instances and taking its optional "
+                    "`group` classification.",
                     "Loading is a full overwrite of the category: benchmarks dropped from the CSV "
                     "are removed and the rest are replaced, so the set always mirrors the "
                     "repository at that commit. Each submission is its own entry on the overview.",
@@ -185,7 +188,10 @@ def benchmark_guide() -> Guide:
                     {"type": "bullets", "items": [
                         "`benchmark` — groups instances into a benchmark, the unit a tool selects.",
                         "`instance` — the case within that benchmark.",
-                        "Any further columns are passed, in file order, to the tool's "
+                        "`group` (optional) — classifies the whole benchmark. Missing or blank "
+                        "values use `default`; every row for one benchmark must use the same "
+                        "competition-configured group. It is metadata and is not passed to tools.",
+                        "Any other columns are passed, in file order, to the tool's "
                         "`prepare_instance.sh` / `run_instance.sh`.",
                         "`timeout` (optional column) — a per-instance wall-clock cap in seconds, "
                         "enforced by the harness. Omit the column to leave instances uncapped.",

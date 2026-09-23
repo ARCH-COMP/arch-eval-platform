@@ -82,6 +82,29 @@ def test_forwards_version_category_then_columns(tmp_path):
     assert row["seen_instance"] == "a1"
 
 
+def test_group_is_not_forwarded_to_tool_scripts(tmp_path):
+    echo_arguments = (
+        "#!/bin/sh\n"
+        'for a in "$@"; do csv_file="$last"; last="$a"; done\n'
+        'printf "result,seen_benchmark,seen_instance,seen_input,arg_count\\n" > "$csv_file"\n'
+        'printf "unknown,%s,%s,%s,%s\\n" "$3" "$4" "$5" "$#" >> "$csv_file"\n'
+    )
+    repo = _repo(
+        tmp_path / "repo",
+        "benchmark,group,instance,input\nACC,default,a1,model-a\n",
+    )
+    tool = _tool(tmp_path / "tool", echo_arguments)
+    out = str(tmp_path / "results.csv")
+
+    (row,) = _run_benchmark(repo, "ACC", tool, out)
+
+    assert row["seen_benchmark"] == "ACC"
+    assert row["seen_instance"] == "a1"
+    assert row["seen_input"] == "model-a"
+    # version, category, three CSV values, results path, figures path
+    assert row["arg_count"] == "7"
+
+
 def test_optional_timeout_column_caps_the_run(tmp_path):
     slow_tool = (
         "#!/bin/sh\n"
