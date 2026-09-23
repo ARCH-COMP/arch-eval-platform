@@ -43,7 +43,8 @@ docker compose up --build
 Worker server (on the dedicated worker machine):
 
 ```bash
-docker compose run --rm backend python deploy/manage.py worker_service --port 9001
+docker compose run --rm -p 9001:9001 backend \
+  python deploy/manage.py worker_service --host 0.0.0.0 --port 9001
 ```
 
 This starts the worker service on port 9001, which listens for provision and terminate requests from the website server.
@@ -57,3 +58,8 @@ Per-user override — each user can enter their own worker server URL and port o
 
 Developing the platform (tests, updating the core engine, architecture) is covered in
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Documentation
+
+Current ARCH-COMP architecture, submission contracts, operations, and legacy migration
+notes start at [docs/index.md](docs/index.md).
