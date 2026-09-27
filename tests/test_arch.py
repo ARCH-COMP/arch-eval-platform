@@ -1,5 +1,7 @@
 """ARCH-COMP plugin: the six seams + the per-category axis (ACTIVE_COMPETITION=arch)."""
 import uuid
+import io
+import zipfile
 
 import pytest
 
@@ -254,6 +256,48 @@ def test_parse_results_dispatches_per_category(tmp_path):
     (d2 / "results.csv").write_text("instance,result,time\nx,holds,1.2\n")
     recs2 = comp.parse_results(task_b, str(d2))
     assert recs2[0].extra == {} and recs2[0].time == 1.2
+
+
+def test_secret_dataset_upload_replaces_and_downloads_current_season(tmp_path):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from rest_framework.test import APIClient
+
+    from arch_comp.models import current_season
+    from comp_eval_platform.core.models import User
+
+    admin = User.objects.create_superuser(email=f"{uuid.uuid4().hex[:8]}@x.test", password="pw")
+    client = APIClient()
+    client.force_authenticate(user=admin)
+
+    first = tmp_path / "first.zip"
+    with zipfile.ZipFile(first, "w") as archive:
+        archive.writestr("rand01.json", b"first")
+
+    second = tmp_path / "second.zip"
+    with zipfile.ZipFile(second, "w") as archive:
+        archive.writestr("rand01.json", b"second")
+
+    season = current_season()
+    upload_url = "/api/arch/secret-data/"
+    response = client.post(upload_url, {"category": "AFF", "season": season,
+                                       "archive": SimpleUploadedFile(first.name, first.read_bytes(),
+                                                                      content_type="application/zip")},
+                             format="multipart")
+    assert response.status_code == 201
+
+    response = client.post(upload_url, {"category": "AFF", "season": season,
+                                       "archive": SimpleUploadedFile(second.name, second.read_bytes(),
+                                                                      content_type="application/zip")},
+                             format="multipart")
+    assert response.status_code == 200
+
+    response = client.get("/api/arch/secret-data/AFF/download")
+    assert response.status_code == 200
+    body = b"".join(response.streaming_content)
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
+        assert archive.namelist() == ["rand01.json"]
+        assert archive.read("rand01.json") == b"second"
+
 
 
 def test_score_is_category_aware():
