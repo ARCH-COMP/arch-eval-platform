@@ -37,6 +37,13 @@ export BENCHMARKS_DIR=/app/benchmarks_repo
 results_file=/app/logs/results_${benchmark_id}.csv
 
 # Start the Python harness script (test executor)
+if [ "${category}" = "AFF" ]; then
+    secret_data_zip="$(mktemp /tmp/secret_data_XXXXXX.zip)"
+    if curl -fsSLo "${secret_data_zip}" "${ROOT_URL}/api/arch/secret-data/${category}/download"; then
+        unzip -oq "${secret_data_zip}" -d /app/tool || true
+    fi
+    rm -f "${secret_data_zip}"
+fi
 if python3 "${script_here}/../harness.py" benchmark \
     /app/benchmarks_repo "${benchmark_name}" \
     /app/tool/${script_dir} \
@@ -105,6 +112,13 @@ fi
 # so the run needs no separate 'finished' line — matching VNN.
 export BENCHMARKS_DIR=/home/ubuntu/benchmarks_repo
 results_file=/home/ubuntu/logs/results_${benchmark_id}.csv
+if [ "${category}" = "AFF" ]; then
+    secret_data_zip="$(mktemp /tmp/secret_data_XXXXXX.zip)"
+    if curl -fsSLo "${secret_data_zip}" "${ROOT_URL}/api/arch/secret-data/${category}/download"; then
+        unzip -oq "${secret_data_zip}" -d /home/ubuntu/tool || true
+    fi
+    rm -f "${secret_data_zip}"
+fi
 if python3 /home/ubuntu/harness.py benchmark \
     /home/ubuntu/benchmarks_repo \"${benchmark_name}\" \
     /home/ubuntu/tool/${script_dir} \
