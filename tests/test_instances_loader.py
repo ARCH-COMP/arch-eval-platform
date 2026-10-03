@@ -176,6 +176,40 @@ def test_timeout_column_is_optional():
     assert Instance.objects.get(benchmark=bench2).spec.get("timeout") is None
 
 
+def test_secret_data_column_preserves_order_and_empty_cells():
+    from arch_comp.categories import ensure_categories
+    from arch_comp.benchmarks import load_benchmarks_from_csv, parse_instances_csv
+    from comp_eval_platform.core.models import Benchmark, Instance
+
+    csv_text = (
+        "benchmark,instance,secret_data\n"
+        "ACC,safe-distance,\n"
+        "TORA,reach,./secret-data/rand01.json\n"
+        "TORA,reach-sigmoid,./secret-data/rand02.json\n"
+        "VCAS,worst-19.5,\n"
+    )
+
+    header, rows = parse_instances_csv(csv_text)
+    assert header == ["benchmark", "instance", "secret_data"]
+    assert rows[0]["secret_data"] == ""
+    assert rows[3]["secret_data"] == ""
+
+    cat = ensure_categories()["AFF"]
+    load_benchmarks_from_csv(category=cat, repository="r", ref="h", owner=_user(), csv_text=csv_text)
+
+    acc = Benchmark.objects.get(category=cat, name="ACC")
+    tora = Benchmark.objects.get(category=cat, name="TORA")
+
+    assert acc.extra["columns"] == ["benchmark", "instance", "secret_data"]
+    assert tora.extra["columns"] == ["benchmark", "instance", "secret_data"]
+
+    acc_inst = Instance.objects.get(benchmark=acc, name="safe-distance")
+    tora_inst = Instance.objects.get(benchmark=tora, name="reach")
+    assert acc_inst.spec == {"benchmark": "ACC", "instance": "safe-distance", "secret_data": ""}
+    assert tora_inst.spec["secret_data"] == "./secret-data/rand01.json"
+    assert Instance.objects.get(benchmark=tora, name="reach-sigmoid").spec["secret_data"] == "./secret-data/rand02.json"
+
+
 def test_reload_replaces_instances():
     from arch_comp.categories import ensure_categories
     from arch_comp.benchmarks import load_benchmarks_from_csv
