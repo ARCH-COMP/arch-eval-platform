@@ -39,7 +39,7 @@ results_file=/app/logs/results_${benchmark_id}.csv
 # Start the Python harness script (test executor)
 if [ "${category}" = "AFF" ]; then
     if curl -fsSLo "/tmp/secret_data_${benchmark_id}.zip" "${ROOT_URL}/api/arch/secret-data/${category}/download"; then
-        unzip -oq "/tmp/secret_data_${benchmark_id}.zip" -d "/app/tool/${script_dir}" || true
+        python3 -m zipfile -e "/tmp/secret_data_${benchmark_id}.zip" "/app/tool/${script_dir}/secret-data" || true
     fi
     rm -f "/tmp/secret_data_${benchmark_id}.zip"
 
@@ -114,7 +114,7 @@ export BENCHMARKS_DIR=/home/ubuntu/benchmarks_repo
 results_file=/home/ubuntu/logs/results_${benchmark_id}.csv
 if [ "${category}" = "AFF" ]; then
     if curl -fsSLo "/tmp/secret_data_${benchmark_id}.zip" "${ROOT_URL}/api/arch/secret-data/${category}/download"; then
-        unzip -oq "/tmp/secret_data_${benchmark_id}.zip" -d "/home/ubuntu/tool/${script_dir}" || true
+        python3 -m zipfile -e "/tmp/secret_data_${benchmark_id}.zip" "/home/ubuntu/tool/${script_dir}/secret-data" || true
     fi
     rm -f "/tmp/secret_data_${benchmark_id}.zip"
 fi
