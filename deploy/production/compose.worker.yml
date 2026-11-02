@@ -1,0 +1,38 @@
+# ARCH worker for Glados (remote_docker). Written for docker-compose 1.29.
+#   docker-compose -p arch-comp -f deploy/production/compose.worker.yml up -d --build
+services:
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ../../core:/core
+      - ../..:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      # Loopback only: the service has no authentication and controls Docker.
+      - "127.0.0.1:${WORKER_PORT:-9001}:9001"
+    environment:
+      DJANGO_SETTINGS_MODULE: deploy.settings
+      ACTIVE_COMPETITION: arch
+      SCRIPT_ROOT: /app/arch_comp
+      COMP_DOCKER_NETWORK: arch-comp-jobs
+      COMP_DOCKER_NAME_PREFIX: arch
+      COMP_DOCKER_GPU: "${COMP_DOCKER_GPU:-}"
+      # Glados runs Docker 20.10 (API 1.41); the image's docker CLI is newer.
+      DOCKER_API_VERSION: "${DOCKER_API_VERSION:-1.41}"
+    command: >
+      sh -c "pip install -q -e /core -e . &&
+             exec python deploy/manage.py worker_service --host 0.0.0.0 --port 9001"
+    networks:
+      - default
+      - jobs
+
+networks:
+  jobs:
+    name: arch-comp-jobs
+    ipam:
+      config:
+        - subnet: ${JOBS_SUBNET:-172.30.0.0/16}
